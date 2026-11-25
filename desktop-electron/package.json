@@ -1,0 +1,37 @@
+{
+  "name": "negruzino-desktop",
+  "productName": "NEGRUZINO",
+  "version": "1.0.0",
+  "description": "НЕГРУЗИНО.EXE // 1994 — Desktop Edition",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "ru.negruzino.game1994",
+    "productName": "NEGRUZINO",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "app.html"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "NEGRUZINO.exe"
+    }
+  }
+}
