@@ -15,22 +15,23 @@ export interface WorldMaterialSet {
   houseTimber: THREE.MeshStandardMaterial;
   houseBrick: THREE.MeshStandardMaterial;
   fence: THREE.MeshStandardMaterial;
-  road: THREE.MeshStandardMaterial;
+  road: THREE.MeshPhysicalMaterial;
   lawn: THREE.MeshStandardMaterial;
   roof: THREE.MeshStandardMaterial;
   concrete: THREE.MeshStandardMaterial;
   woodTrim: THREE.MeshStandardMaterial;
   brick: THREE.MeshStandardMaterial;
-  grimeMetal: THREE.MeshStandardMaterial;
+  grimeMetal: THREE.MeshPhysicalMaterial;
   bark: THREE.MeshStandardMaterial;
   birchBark: THREE.MeshStandardMaterial;
   foliage: THREE.MeshStandardMaterial;
-  windowWarm: THREE.MeshStandardMaterial;
-  windowCrimson: THREE.MeshStandardMaterial;
-  windowDark: THREE.MeshStandardMaterial;
-  frostedGlass: THREE.MeshStandardMaterial;
-  carPaint: THREE.MeshStandardMaterial;
+  windowWarm: THREE.MeshPhysicalMaterial;
+  windowCrimson: THREE.MeshPhysicalMaterial;
+  windowDark: THREE.MeshPhysicalMaterial;
+  frostedGlass: THREE.MeshPhysicalMaterial;
+  carPaint: THREE.MeshPhysicalMaterial;
   tireRubber: THREE.MeshStandardMaterial;
+  roadTimeUniform: { value: number };
 }
 
 /**
@@ -523,7 +524,7 @@ function createChimneyBrickMaterial(maxAnisotropy: number): THREE.MeshStandardMa
   });
 }
 
-function createGrimeMetalMaterial(maxAnisotropy: number): THREE.MeshStandardMaterial {
+function createGrimeMetalMaterial(maxAnisotropy: number): THREE.MeshPhysicalMaterial {
   const size = 256;
   const c = document.createElement('canvas');
   c.width = size;
@@ -531,32 +532,41 @@ function createGrimeMetalMaterial(maxAnisotropy: number): THREE.MeshStandardMate
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const rand = seededRand(551994);
 
-  ctx.fillStyle = '#383e46';
+  ctx.fillStyle = '#424954';
   ctx.fillRect(0, 0, size, size);
+  // Directional brushed steel grain + oxide rust pitting
+  for (let y = 0; y < size; y += 2) {
+    const v = 56 + Math.round((rand() - 0.5) * 22);
+    ctx.fillStyle = `rgb(${v},${v + 5},${v + 12})`;
+    ctx.fillRect(0, y, size, 2);
+  }
   for (let i = 0; i < 120; i++) {
     ctx.fillStyle =
-      i % 3 === 0 ? 'rgba(98, 46, 24, 0.42)' : 'rgba(18, 22, 26, 0.38)';
+      i % 3 === 0 ? 'rgba(104, 48, 24, 0.42)' : 'rgba(18, 22, 28, 0.36)';
     ctx.fillRect(rand() * size, rand() * size, 6 + rand() * 36, 4 + rand() * 28);
   }
-  enhanceHorrorAlbedo(c, 0.3);
+  enhanceHorrorAlbedo(c, 0.28);
 
   const pbr = buildSobelPbrTextures(c, maxAnisotropy, {
-    normalStrength: 2.6,
-    roughMin: 0.34,
-    roughMax: 0.86,
+    normalStrength: 2.7,
+    roughMin: 0.24,
+    roughMax: 0.78,
     aoStrength: 0.65,
   });
 
-  return new THREE.MeshStandardMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: pbr.map,
     normalMap: pbr.normalMap,
-    normalScale: new THREE.Vector2(0.9, 0.9),
+    normalScale: new THREE.Vector2(0.95, 0.95),
     roughnessMap: pbr.roughnessMap,
     aoMap: pbr.aoMap,
-    aoMapIntensity: 0.65,
+    aoMapIntensity: 0.68,
     roughness: 1.0,
-    metalness: 0.62,
+    metalness: 0.74,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.36,
+    envMapIntensity: 1.45,
   });
 }
 
@@ -666,7 +676,7 @@ function createPineFoliageMaterial(maxAnisotropy: number): THREE.MeshStandardMat
 function createWindowGlassMaterial(
   variant: 'warm' | 'crimson' | 'dark',
   maxAnisotropy: number
-): THREE.MeshStandardMaterial {
+): THREE.MeshPhysicalMaterial {
   const size = 256;
   const c = document.createElement('canvas');
   c.width = size;
@@ -674,22 +684,43 @@ function createWindowGlassMaterial(
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const rand = seededRand(variant === 'crimson' ? 9194 : variant === 'warm' ? 7194 : 5194);
 
-  const grad = ctx.createRadialGradient(128, 118, 12, 128, 128, 160);
+  const grad = ctx.createRadialGradient(128, 114, 10, 128, 128, 165);
   if (variant === 'crimson') {
-    grad.addColorStop(0, '#ff6858');
-    grad.addColorStop(0.55, '#b81d22');
-    grad.addColorStop(1, '#36090e');
+    grad.addColorStop(0, '#ff7864');
+    grad.addColorStop(0.48, '#c21e26');
+    grad.addColorStop(0.84, '#4e0a12');
+    grad.addColorStop(1, '#1e0408');
   } else if (variant === 'warm') {
-    grad.addColorStop(0, '#ffe3a3');
-    grad.addColorStop(0.58, '#c97d32');
-    grad.addColorStop(1, '#362010');
+    grad.addColorStop(0, '#fff0c4');
+    grad.addColorStop(0.52, '#d6893a');
+    grad.addColorStop(0.85, '#593315');
+    grad.addColorStop(1, '#241308');
   } else {
-    grad.addColorStop(0, '#27394d');
-    grad.addColorStop(0.6, '#141f2d');
-    grad.addColorStop(1, '#080e16');
+    grad.addColorStop(0, '#2d445d');
+    grad.addColorStop(0.55, '#152232');
+    grad.addColorStop(1, '#070c14');
   }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
+
+  // Subtle silhouetted interior ceiling lamp & shelf depth inside lit rooms
+  if (variant !== 'dark') {
+    ctx.fillStyle = 'rgba(20, 10, 8, 0.28)';
+    ctx.fillRect(124, 0, 8, 44);
+    ctx.beginPath();
+    ctx.moveTo(96, 56);
+    ctx.lineTo(160, 56);
+    ctx.lineTo(144, 38);
+    ctx.lineTo(112, 38);
+    ctx.closePath();
+    ctx.fill();
+    // Potted windowsill houseplant silhouette
+    ctx.fillStyle = 'rgba(18, 12, 10, 0.42)';
+    ctx.fillRect(166, 212, 30, 32);
+    ctx.beginPath();
+    ctx.arc(181, 200, 18, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   // Draped Soviet lace/fabric curtain folds along left & right edges
   for (let side = 0; side < 2; side++) {
@@ -703,39 +734,42 @@ function createWindowGlassMaterial(
       ctx.fillRect(startX + x, 0, 5, size);
     }
   }
-  // Subtle silhouette / condensation grime streaks on window pane
-  for (let i = 0; i < 42; i++) {
-    ctx.fillStyle = `rgba(12, 16, 22, ${0.08 + rand() * 0.22})`;
-    ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 6, 16 + rand() * 64);
+  // Raindrop condensation streaks on outer window glass
+  for (let i = 0; i < 48; i++) {
+    ctx.fillStyle = `rgba(12, 16, 22, ${0.08 + rand() * 0.2})`;
+    ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 5, 16 + rand() * 68);
   }
-  // Dust vignette along outer frame edges
   ctx.strokeStyle = 'rgba(8, 10, 14, 0.72)';
   ctx.lineWidth = 18;
   ctx.strokeRect(0, 0, size, size);
 
   const pbr = buildSobelPbrTextures(c, maxAnisotropy, {
-    normalStrength: 1.4,
-    roughMin: 0.1,
-    roughMax: 0.42,
+    normalStrength: 1.5,
+    roughMin: 0.06,
+    roughMax: 0.34,
     aoStrength: 0.35,
   });
 
-  return new THREE.MeshStandardMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: pbr.map,
     normalMap: pbr.normalMap,
     normalScale: new THREE.Vector2(0.55, 0.55),
     roughnessMap: pbr.roughnessMap,
     emissive:
-      variant === 'crimson' ? 0xc21e24 : variant === 'warm' ? 0xd98632 : 0x0b1524,
+      variant === 'crimson' ? 0xcc2026 : variant === 'warm' ? 0xe08d38 : 0x0d1a2c,
     emissiveMap: pbr.map,
-    emissiveIntensity: variant === 'crimson' ? 1.55 : variant === 'warm' ? 1.05 : 0.22,
-    roughness: 1.0,
-    metalness: 0.38,
+    emissiveIntensity: variant === 'crimson' ? 1.65 : variant === 'warm' ? 1.18 : 0.26,
+    roughness: 0.9,
+    metalness: 0.25,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    reflectivity: 0.95,
+    envMapIntensity: 1.85,
   });
 }
 
-function createFrostedGlassMaterial(maxAnisotropy: number): THREE.MeshStandardMaterial {
+function createFrostedGlassMaterial(maxAnisotropy: number): THREE.MeshPhysicalMaterial {
   const size = 128;
   const c = document.createElement('canvas');
   c.width = size;
@@ -743,11 +777,10 @@ function createFrostedGlassMaterial(maxAnisotropy: number): THREE.MeshStandardMa
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const rand = seededRand(121994);
 
-  ctx.fillStyle = '#e8e4dc';
+  ctx.fillStyle = '#ebe6dc';
   ctx.fillRect(0, 0, size, size);
-  // Ribbed Soviet lantern/bulb glass flutes + faint soot
   for (let x = 0; x < size; x += 8) {
-    ctx.fillStyle = x % 16 === 0 ? 'rgba(255,255,255,0.45)' : 'rgba(90,85,78,0.28)';
+    ctx.fillStyle = x % 16 === 0 ? 'rgba(255,255,255,0.48)' : 'rgba(90,85,78,0.28)';
     ctx.fillRect(x, 0, 4, size);
   }
   for (let i = 0; i < 60; i++) {
@@ -755,68 +788,89 @@ function createFrostedGlassMaterial(maxAnisotropy: number): THREE.MeshStandardMa
     ctx.fillRect(rand() * size, rand() * size, 3 + rand() * 8, 3 + rand() * 8);
   }
   const pbr = buildSobelPbrTextures(c, maxAnisotropy, {
-    normalStrength: 2.2,
-    roughMin: 0.18,
-    roughMax: 0.52,
+    normalStrength: 2.3,
+    roughMin: 0.14,
+    roughMax: 0.44,
     aoStrength: 0.3,
   });
 
-  return new THREE.MeshStandardMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: pbr.map,
     normalMap: pbr.normalMap,
-    normalScale: new THREE.Vector2(0.8, 0.8),
+    normalScale: new THREE.Vector2(0.85, 0.85),
     roughnessMap: pbr.roughnessMap,
     roughness: 1.0,
-    metalness: 0.12,
+    metalness: 0.1,
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 1.5,
   });
 }
 
-function createSovietCarPaintMaterial(maxAnisotropy: number): THREE.MeshStandardMaterial {
-  const size = 256;
+function createSovietCarPaintMaterial(maxAnisotropy: number): THREE.MeshPhysicalMaterial {
+  const size = 512;
   const c = document.createElement('canvas');
   c.width = size;
   c.height = size;
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   const rand = seededRand(19942141);
 
-  // Classic 1990s Soviet seafoam-olive Moskvitch enamel with damp rain streaks & lower sill rust
-  ctx.fillStyle = '#36504d';
+  // Authentic 1994 Soviet Moskvitch-412 metallic seafoam-jade lacquer with subtle metallic flake & rain-beading
+  const bodyGrad = ctx.createLinearGradient(0, 0, 0, size);
+  bodyGrad.addColorStop(0, '#3e625e');
+  bodyGrad.addColorStop(0.62, '#34524e');
+  bodyGrad.addColorStop(0.86, '#2a3d3b');
+  bodyGrad.addColorStop(1, '#3d2c22'); // subtle lower rocker-panel mud/rust spray
+  ctx.fillStyle = bodyGrad;
   ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 85; i++) {
+
+  // Fine automotive metallic flake shimmer
+  for (let i = 0; i < 1400; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(155, 204, 198, 0.12)' : 'rgba(18, 30, 32, 0.16)';
+    ctx.fillRect(rand() * size, rand() * size, 2, 2);
+  }
+  // Rain runoff streaks & wheel-well patina
+  for (let i = 0; i < 95; i++) {
     ctx.fillStyle =
-      i % 4 === 0
-        ? 'rgba(112, 54, 28, 0.34)'
-        : i % 2 === 0
-          ? 'rgba(20, 32, 34, 0.28)'
-          : 'rgba(98, 128, 124, 0.2)';
-    ctx.fillRect(rand() * size, rand() * size, 3 + rand() * 14, 12 + rand() * 48);
+      i % 5 === 0
+        ? 'rgba(112, 54, 28, 0.26)'
+        : 'rgba(16, 28, 30, 0.22)';
+    ctx.fillRect(rand() * size, rand() * size, 2 + rand() * 8, 14 + rand() * 64);
   }
-  // Raindrop sheen flecks
-  for (let i = 0; i < 160; i++) {
-    ctx.fillStyle = 'rgba(180, 210, 220, 0.14)';
-    ctx.fillRect(rand() * size, rand() * size, 2, 2 + rand() * 6);
+  // Glossy raindrop beads on enamel
+  for (let i = 0; i < 220; i++) {
+    const rx = rand() * size;
+    const ry = rand() * size;
+    const rr = 1.5 + rand() * 3.5;
+    ctx.fillStyle = 'rgba(210, 236, 245, 0.22)';
+    ctx.beginPath();
+    ctx.arc(rx, ry, rr, 0, Math.PI * 2);
+    ctx.fill();
   }
-  enhanceHorrorAlbedo(c, 0.22);
+  enhanceHorrorAlbedo(c, 0.16);
 
   const pbr = buildSobelPbrTextures(c, maxAnisotropy, {
-    normalStrength: 1.4,
-    roughMin: 0.18,
-    roughMax: 0.62,
-    aoStrength: 0.45,
+    normalStrength: 1.15,
+    roughMin: 0.14,
+    roughMax: 0.48,
+    aoStrength: 0.42,
   });
 
-  return new THREE.MeshStandardMaterial({
+  return new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: pbr.map,
     normalMap: pbr.normalMap,
-    normalScale: new THREE.Vector2(0.55, 0.55),
+    normalScale: new THREE.Vector2(0.45, 0.45),
     roughnessMap: pbr.roughnessMap,
     aoMap: pbr.aoMap,
-    aoMapIntensity: 0.55,
-    roughness: 1.0,
-    metalness: 0.44,
-    envMapIntensity: 1.45,
+    aoMapIntensity: 0.5,
+    roughness: 0.85,
+    metalness: 0.62,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.1,
+    reflectivity: 1.0,
+    envMapIntensity: 2.1,
   });
 }
 
@@ -1006,9 +1060,10 @@ export function createRainPuddleMaterial(_maxAnisotropy?: number): THREE.ShaderM
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uSkyColor: { value: new THREE.Color(0x1f3554) },
-      uWarmGlow: { value: new THREE.Color(0xf6a44b) },
-      uMoonDir: { value: new THREE.Vector3(0.42, 0.74, -0.52).normalize() },
+      uSkyColor: { value: new THREE.Color(0x284770) },
+      uWarmGlow: { value: new THREE.Color(0xffac52) },
+      uCrimsonGlow: { value: new THREE.Color(0xd9383a) },
+      uMoonDir: { value: new THREE.Vector3(0.42, 0.72, -0.54).normalize() },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -1024,6 +1079,7 @@ export function createRainPuddleMaterial(_maxAnisotropy?: number): THREE.ShaderM
       uniform float uTime;
       uniform vec3 uSkyColor;
       uniform vec3 uWarmGlow;
+      uniform vec3 uCrimsonGlow;
       uniform vec3 uMoonDir;
 
       varying vec2 vUv;
@@ -1033,6 +1089,12 @@ export function createRainPuddleMaterial(_maxAnisotropy?: number): THREE.ShaderM
         p = fract(p * vec2(123.34, 456.21));
         p += dot(p, p + 45.32);
         return fract(p.x * p.y);
+      }
+
+      vec2 hash22(vec2 p) {
+        vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.xx + p3.yz) * p3.zy);
       }
 
       float valueNoise(vec2 p) {
@@ -1049,54 +1111,107 @@ export function createRainPuddleMaterial(_maxAnisotropy?: number): THREE.ShaderM
       float fbm(vec2 p) {
         float v = 0.0;
         float a = 0.5;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
           v += a * valueNoise(p);
-          p *= 2.07;
+          p *= 2.04;
           a *= 0.5;
         }
         return v;
       }
 
+      // Physically-based expanding circular raindrop ripple returning radial normal gradient (xy) + crest energy (z)
+      vec3 rainRippleLayer(vec2 worldXZ, float time, float scale, float speed, float seedOffset) {
+        vec2 uv = worldXZ * scale;
+        vec2 cell = floor(uv);
+        vec2 local = fract(uv);
+        vec2 grad = vec2(0.0);
+        float crest = 0.0;
+
+        for (int oy = -1; oy <= 1; oy++) {
+          for (int ox = -1; ox <= 1; ox++) {
+            vec2 neighbor = cell + vec2(float(ox), float(oy));
+            vec2 rnd = hash22(neighbor + seedOffset);
+            // Only ~62% of cells fire per cycle so puddles feel organically sprinkled, not gridded
+            if (rnd.x < 0.36) continue;
+            float cycle = time * speed + rnd.y * 6.2831;
+            float age = fract(cycle);
+            float cycleIdx = floor(cycle);
+            vec2 dropCenter = vec2(float(ox), float(oy)) + 0.18 + 0.64 * hash22(neighbor + cycleIdx * 17.3 + seedOffset);
+            vec2 dVec = local - dropCenter;
+            float dist = length(dVec);
+            float maxRadius = 0.42 + 0.24 * rnd.x;
+            float waveRadius = age * maxRadius;
+            float band = dist - waveRadius;
+            // Tight physical damped wave packet: 2 subtle concentric rings fading quadratically
+            float envelope = exp(-band * band * 145.0) * (1.0 - age) * (1.0 - age) * smoothstep(0.0, 0.06, age);
+            float waveDeriv = cos(band * 44.0) * envelope;
+            vec2 dir = dist > 0.001 ? dVec / dist : vec2(0.0);
+            grad += dir * waveDeriv;
+            crest += max(0.0, sin(band * 44.0)) * envelope;
+          }
+        }
+        return vec3(grad, crest);
+      }
+
       void main() {
         vec2 centered = (vUv - 0.5) * 2.0;
         float r = length(centered);
-        // Organic asphalt depression silhouette with very soft feathered edge
-        float n = fbm(vWorldPos.xz * 0.48);
-        float edge = r + (n - 0.5) * 0.62;
-        float shape = 1.0 - smoothstep(0.32, 0.92, edge);
-        if (shape < 0.015) discard;
+        // Organic asphalt depression with subtle wheel-rut elongation
+        float n = fbm(vWorldPos.xz * 0.52);
+        float edge = r + (n - 0.5) * 0.68;
+        float shape = 1.0 - smoothstep(0.26, 0.95, edge);
+        if (shape < 0.012) discard;
 
-        // Subtle wind-driven micro-surface perturbation + faint asphalt grit underneath
-        float s1 = valueNoise(vWorldPos.xz * 3.8 + vec2(uTime * 0.35, -uTime * 0.22));
-        float s2 = valueNoise(vWorldPos.xz * 8.4 + vec2(-uTime * 0.28, uTime * 0.41));
+        float camDist = length(cameraPosition - vWorldPos);
+        float rippleFade = 1.0 - smoothstep(14.0, 38.0, camDist);
+
+        // Micro-capillary wind drift + 3 staggered raindrop impact ripple layers
+        float s1 = valueNoise(vWorldPos.xz * 4.2 + vec2(uTime * 0.38, -uTime * 0.24));
+        float s2 = valueNoise(vWorldPos.xz * 9.4 + vec2(-uTime * 0.28, uTime * 0.44));
         vec2 microGrad = vec2(s1 - 0.5, s2 - 0.5) * 0.055;
-        vec3 N = normalize(vec3(microGrad.x, 1.0, microGrad.y));
+
+        vec3 rA = rainRippleLayer(vWorldPos.xz, uTime, 1.35, 0.72, 11.7);
+        vec3 rB = rainRippleLayer(vWorldPos.xz + vec2(3.1, -1.9), uTime, 2.05, 0.94, 47.3);
+        vec3 rC = rainRippleLayer(vWorldPos.xz + vec2(-2.4, 4.7), uTime, 2.85, 1.18, 83.1);
+
+        vec2 rippleGrad = (rA.xy * 0.24 + rB.xy * 0.17 + rC.xy * 0.11) * rippleFade;
+        float rippleCrest = clamp((rA.z * 0.65 + rB.z * 0.5 + rC.z * 0.35) * rippleFade, 0.0, 1.0);
+
+        vec3 N = normalize(vec3(microGrad.x + rippleGrad.x, 1.0, microGrad.y + rippleGrad.y));
 
         vec3 V = normalize(cameraPosition - vWorldPos);
-        float NdotV = max(dot(N, V), 0.04);
-        // Real water Fresnel (F0 = 0.02, grazing angles reflect strongly like wet midnight mirror)
-        float fresnel = 0.06 + 0.94 * pow(1.0 - NdotV, 3.6);
+        float NdotV = max(dot(N, V), 0.03);
+        // Physical Schlick water Fresnel (crisp mirror reflection at shallow angles)
+        float fresnel = 0.045 + 0.955 * pow(1.0 - NdotV, 3.6);
 
-        // Stretched warm sodium streetlamp reflections along the road Z axis
-        float lampWave = 0.5 + 0.5 * cos((vWorldPos.z + N.x * 2.4) * 0.34);
-        float roadBand = exp(-abs(vWorldPos.x) * 0.22);
-        vec3 warmStreak = uWarmGlow * (0.14 + 0.62 * pow(lampWave, 3.4)) * roadBand * (0.45 + 0.55 * fresnel);
+        // Multi-source realistic reflections of overhead sodium streetlamps + house windows
+        vec3 R = reflect(-V, N);
+        float lampWave = 0.5 + 0.5 * cos((vWorldPos.z + R.z * 2.8 + N.x * 3.8) * 0.35);
+        float lampProximity = 0.25 + 0.75 * pow(lampWave, 2.6);
+        float roadBand = exp(-abs(vWorldPos.x) * 0.18);
+        vec3 warmStreak = uWarmGlow * (0.24 + 0.92 * pow(lampWave, 2.8)) * roadBand * (0.45 + 0.55 * fresnel);
 
-        // Soft moonlit specular shimmer
+        // Subtle red/amber house window reflection streaks near road curbs
+        float edgeWindowMask = smoothstep(1.1, 4.2, abs(vWorldPos.x));
+        float winWave = 0.5 + 0.5 * sin(vWorldPos.z * 0.46 + R.x * 2.4);
+        vec3 windowBounce = mix(uWarmGlow, uCrimsonGlow, step(0.0, vWorldPos.x)) * pow(winWave, 3.8) * edgeWindowMask * 0.55 * fresnel;
+
+        // Crisp moonlit specular column + warm sodium ripple-edge specular glint (NOT painted white!)
         vec3 H = normalize(uMoonDir + V);
-        float spec = pow(max(dot(N, H), 0.0), 96.0) * 0.65;
+        float spec = pow(max(dot(N, H), 0.0), 110.0) * 1.25;
+        vec3 rippleGlint = mix(uSkyColor * 1.15, uWarmGlow * 1.35, lampProximity * roadBand) * rippleCrest * (0.22 + 0.55 * fresnel);
 
-        // Deep dark water absorption in core + crisp sky/lamp reflection at grazing angles
-        vec3 darkWetBase = vec3(0.014, 0.020, 0.032);
-        vec3 skyRefl = mix(uSkyColor * 0.45, uSkyColor * 1.15, fresnel);
-        vec3 color = mix(darkWetBase, skyRefl + warmStreak, clamp(fresnel * 0.85 + 0.10, 0.0, 1.0));
-        color += vec3(0.68, 0.80, 0.95) * spec;
+        // Deep wet tarmac absorption + mirror reflection blend
+        vec3 darkWetBase = vec3(0.011, 0.017, 0.029);
+        vec3 skyRefl = mix(uSkyColor * 0.46, uSkyColor * 1.42, fresnel);
+        vec3 color = mix(darkWetBase, skyRefl + warmStreak + windowBounce, clamp(fresnel * 0.92 + 0.08, 0.0, 1.0));
+        color += vec3(0.76, 0.88, 1.0) * spec + rippleGlint;
 
-        // Damp darkened tarmac halo transitioning invisibly into the road
-        float waterCore = smoothstep(0.02, 0.48, shape);
-        color = mix(vec3(0.012, 0.015, 0.022), color, waterCore);
+        // Darkened damp asphalt fringe around puddle perimeter
+        float waterCore = smoothstep(0.02, 0.42, shape);
+        color = mix(vec3(0.010, 0.013, 0.020), color, waterCore);
 
-        float alpha = clamp(shape * (0.42 + fresnel * 0.44), 0.0, 0.82);
+        float alpha = clamp(shape * (0.52 + fresnel * 0.44), 0.0, 0.9);
         gl_FragColor = vec4(color, alpha);
       }
     `,
@@ -1118,12 +1233,10 @@ function createBirchBarkMaterial(maxAnisotropy: number): THREE.MeshStandardMater
 
   ctx.fillStyle = '#c4c0b6';
   ctx.fillRect(0, 0, size, size);
-  // Subtle damp grey-olive vertical shading
   for (let i = 0; i < 28; i++) {
     ctx.fillStyle = `rgba(92, 96, 88, ${0.08 + rand() * 0.14})`;
     ctx.fillRect(rand() * size, 0, 8 + rand() * 24, size);
   }
-  // Characteristic Russian silver birch dark horizontal lenticel dashes & fissures
   for (let i = 0; i < 110; i++) {
     const x = rand() * size;
     const y = rand() * size;
@@ -1132,7 +1245,6 @@ function createBirchBarkMaterial(maxAnisotropy: number): THREE.MeshStandardMater
     ctx.fillStyle = rand() > 0.25 ? '#23201e' : '#4a433b';
     ctx.fillRect(x, y, w, h);
   }
-  // Rough dark fissured base bark near bottom of trunk
   const baseGrad = ctx.createLinearGradient(0, size * 0.72, 0, size);
   baseGrad.addColorStop(0, 'rgba(34, 30, 26, 0)');
   baseGrad.addColorStop(1, 'rgba(26, 22, 20, 0.88)');
@@ -1159,45 +1271,119 @@ function createBirchBarkMaterial(maxAnisotropy: number): THREE.MeshStandardMater
 }
 
 export function createNocturnalSkyTexture(): THREE.CanvasTexture {
-  const w = 1024;
-  const h = 512;
+  const w = 2048;
+  const h = 1024;
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d')!;
   const rand = seededRand(199409);
 
-  // Midnight zenith -> misty blue-slate upper sky -> faint warm sodium horizon glow -> dark ground bounce
+  // Rich atmospheric midnight Rayleigh/Mie twilight sky gradient
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0.0, '#040812');
-  grad.addColorStop(0.26, '#0a1426');
-  grad.addColorStop(0.45, '#132036');
-  grad.addColorStop(0.51, '#292428');
-  grad.addColorStop(0.56, '#141720');
-  grad.addColorStop(1.0, '#080b10');
+  grad.addColorStop(0.0, '#02060f');
+  grad.addColorStop(0.18, '#060f20');
+  grad.addColorStop(0.35, '#0d1c34');
+  grad.addColorStop(0.455, '#192b46');
+  grad.addColorStop(0.495, '#3b2f2d'); // distant warm sodium light-pollution horizon band
+  grad.addColorStop(0.525, '#251e22');
+  grad.addColorStop(0.57, '#0f131b');
+  grad.addColorStop(1.0, '#06080d');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  // Subtle pinprick stars in upper dome
-  for (let i = 0; i < 260; i++) {
-    const sx = rand() * w;
-    const sy = rand() * (h * 0.42);
-    const alpha = 0.15 + rand() * 0.55;
-    const sz = rand() > 0.85 ? 1.8 : 1.0;
-    ctx.fillStyle = `rgba(215, 232, 255, ${alpha})`;
-    ctx.fillRect(sx, sy, sz, sz);
+  // Delicate high-altitude atmospheric haze bands & faint Milky Way nebula dust
+  for (let i = 0; i < 18; i++) {
+    const cx = rand() * w;
+    const cy = h * 0.1 + rand() * (h * 0.22);
+    const rx = 180 + rand() * 320;
+    const ry = 28 + rand() * 54;
+    const neb = ctx.createRadialGradient(cx, cy, 8, cx, cy, rx);
+    neb.addColorStop(0, 'rgba(46, 74, 118, 0.14)');
+    neb.addColorStop(1, 'rgba(10, 18, 34, 0)');
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, ry / rx);
+    ctx.fillStyle = neb;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
-  // Drifting overcast moonlit cloud bands
-  for (let i = 0; i < 38; i++) {
+  // Crisp, anti-aliased pinpoint stars (NO blocky square dots!)
+  for (let i = 0; i < 420; i++) {
+    const sx = rand() * w;
+    const sy = rand() * (h * 0.36);
+    const fadeHorizon = Math.max(0, 1 - sy / (h * 0.36));
+    const mag = Math.pow(rand(), 2.8);
+    const alpha = (0.08 + mag * 0.62) * fadeHorizon;
+    const radius = 0.45 + mag * 1.15;
+    ctx.fillStyle =
+      i % 7 === 0
+        ? `rgba(255, 232, 200, ${alpha})`
+        : `rgba(212, 232, 255, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Dramatic silver-blue full moon with multi-ring atmospheric Mie corona + realistic lunar maria craters
+  const moonX = w * 0.62;
+  const moonY = h * 0.26;
+  const outerCorona = ctx.createRadialGradient(moonX, moonY, 16, moonX, moonY, 360);
+  outerCorona.addColorStop(0, 'rgba(235, 246, 255, 0.96)');
+  outerCorona.addColorStop(0.08, 'rgba(186, 218, 255, 0.56)');
+  outerCorona.addColorStop(0.24, 'rgba(98, 146, 210, 0.24)');
+  outerCorona.addColorStop(0.55, 'rgba(42, 74, 124, 0.08)');
+  outerCorona.addColorStop(1, 'rgba(12, 24, 48, 0)');
+  ctx.fillStyle = outerCorona;
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, 360, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(moonX, moonY, 24, 0, Math.PI * 2);
+  ctx.clip();
+  const moonGrad = ctx.createRadialGradient(moonX - 6, moonY - 5, 3, moonX, moonY, 26);
+  moonGrad.addColorStop(0, '#ffffff');
+  moonGrad.addColorStop(0.72, '#dde9fa');
+  moonGrad.addColorStop(1, '#9ab2d4');
+  ctx.fillStyle = moonGrad;
+  ctx.fillRect(moonX - 26, moonY - 26, 52, 52);
+  // Subtle lunar maria shading
+  for (let m = 0; m < 10; m++) {
+    ctx.fillStyle = `rgba(116, 134, 160, ${0.14 + rand() * 0.16})`;
+    ctx.beginPath();
+    ctx.arc(
+      moonX + (rand() - 0.5) * 32,
+      moonY + (rand() - 0.5) * 32,
+      3 + rand() * 7,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Multi-layered cinematic volumetric night storm clouds (backlit silver rim near moon, dark slate underbellies)
+  for (let i = 0; i < 88; i++) {
     const cx = rand() * w;
     const cy = h * 0.14 + rand() * (h * 0.34);
-    const rx = 65 + rand() * 150;
-    const ry = 10 + rand() * 24;
-    const cg = ctx.createRadialGradient(cx, cy, 4, cx, cy, rx);
-    cg.addColorStop(0, 'rgba(34, 52, 78, 0.28)');
-    cg.addColorStop(0.55, 'rgba(20, 32, 52, 0.14)');
-    cg.addColorStop(1, 'rgba(10, 16, 28, 0)');
+    const rx = 110 + rand() * 290;
+    const ry = 16 + rand() * 44;
+    const distToMoon = Math.hypot(cx - moonX, (cy - moonY) * 2.2);
+    const silverRim = Math.max(0, 1 - distToMoon / 520);
+
+    // Silver-lit upper cloud deck
+    const cg = ctx.createRadialGradient(cx, cy - ry * 0.25, 8, cx, cy, rx);
+    const rCol = Math.round(28 + silverRim * 92);
+    const gCol = Math.round(44 + silverRim * 112);
+    const bCol = Math.round(68 + silverRim * 130);
+    cg.addColorStop(0, `rgba(${rCol}, ${gCol}, ${bCol}, ${0.22 + silverRim * 0.26})`);
+    cg.addColorStop(0.58, `rgba(18, 28, 46, ${0.14 + silverRim * 0.08})`);
+    cg.addColorStop(1, 'rgba(8, 14, 24, 0)');
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(1, ry / rx);
@@ -1206,39 +1392,50 @@ export function createNocturnalSkyTexture(): THREE.CanvasTexture {
     ctx.arc(0, 0, rx, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+
+    // Dark atmospheric cloud underbelly for 3D volumetric depth
+    const ug = ctx.createRadialGradient(cx, cy + ry * 0.35, 6, cx, cy + ry * 0.35, rx * 0.85);
+    ug.addColorStop(0, 'rgba(6, 10, 18, 0.34)');
+    ug.addColorStop(1, 'rgba(6, 10, 18, 0)');
+    ctx.save();
+    ctx.translate(cx, cy + ry * 0.22);
+    ctx.scale(1, (ry * 0.65) / rx);
+    ctx.fillStyle = ug;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
-  // Cold silver moon + atmospheric halo (positioned so puddles & metal catch crisp moonlight)
-  const moonX = w * 0.62;
-  const moonY = h * 0.27;
-  const halo = ctx.createRadialGradient(moonX, moonY, 6, moonX, moonY, 130);
-  halo.addColorStop(0, 'rgba(230, 242, 255, 0.95)');
-  halo.addColorStop(0.14, 'rgba(180, 210, 250, 0.55)');
-  halo.addColorStop(0.45, 'rgba(84, 122, 178, 0.18)');
-  halo.addColorStop(1, 'rgba(20, 36, 62, 0)');
-  ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(moonX, moonY, 130, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#eef5ff';
-  ctx.beginPath();
-  ctx.arc(moonX, moonY, 13, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Warm distant sodium streetlights along horizon band (gives wet roads & guns golden edge speculars)
-  for (let i = 0; i < 6; i++) {
-    const lx = (i + 0.5) * (w / 6);
-    const ly = h * 0.51;
-    const sg = ctx.createRadialGradient(lx, ly, 4, lx, ly, 85);
-    sg.addColorStop(0, 'rgba(238, 154, 62, 0.34)');
-    sg.addColorStop(0.5, 'rgba(180, 96, 32, 0.12)');
+  // Warm sodium suburban light-pollution glow pockets along the horizon (drives gorgeous PBR reflections!)
+  for (let i = 0; i < 8; i++) {
+    const lx = (i + 0.5) * (w / 8);
+    const ly = h * 0.502;
+    const sg = ctx.createRadialGradient(lx, ly, 6, lx, ly, 175);
+    sg.addColorStop(0, 'rgba(252, 168, 72, 0.42)');
+    sg.addColorStop(0.45, 'rgba(196, 106, 36, 0.16)');
     sg.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = sg;
     ctx.beginPath();
-    ctx.arc(lx, ly, 85, 0, Math.PI * 2);
+    ctx.arc(lx, ly, 175, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // Distant dark forested hill ridge silhouette along the horizon line
+  ctx.fillStyle = '#090e16';
+  ctx.beginPath();
+  ctx.moveTo(0, h * 0.52);
+  for (let x = 0; x <= w; x += 16) {
+    const ridge =
+      Math.sin(x * 0.009) * 14 +
+      Math.cos(x * 0.023) * 8 +
+      Math.sin(x * 0.068) * 4;
+    ctx.lineTo(x, h * 0.505 - Math.abs(ridge));
+  }
+  ctx.lineTo(w, h * 0.56);
+  ctx.lineTo(0, h * 0.56);
+  ctx.closePath();
+  ctx.fill();
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1481,15 +1678,130 @@ export function createStarterWorldMaterials(
     maxAnisotropy
   );
 
+  const roadTimeUniform = { value: 0 };
+  const roadMat = new THREE.MeshPhysicalMaterial({
+    color: 0xc8d0dc,
+    map: roadProc.map,
+    normalMap: roadProc.normalMap,
+    normalScale: new THREE.Vector2(0.2, 0.2),
+    roughnessMap: roadProc.roughnessMap,
+    aoMap: roadProc.aoMap,
+    aoMapIntensity: 0.72,
+    roughness: 0.82,
+    metalness: 0.03,
+    clearcoat: 0.14,
+    clearcoatRoughness: 0.58,
+    reflectivity: 0.42,
+    envMapIntensity: 0.55,
+  });
+
+  // AAA Wet-Asphalt Rain Shader: world-space damp wheel-ruts, curb drainage sheen, and live raindrop ripple normals
+  roadMat.onBeforeCompile = (shader) => {
+    shader.uniforms.uRoadTime = roadTimeUniform;
+    shader.vertexShader =
+      'varying vec3 vRoadWorldPos;\n' +
+      shader.vertexShader.replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+         vRoadWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`
+      );
+    shader.fragmentShader =
+      `uniform float uRoadTime;
+       varying vec3 vRoadWorldPos;
+       float _rHash(vec2 p) {
+         p = fract(p * vec2(127.1, 311.7));
+         p += dot(p, p + 34.23);
+         return fract(p.x * p.y);
+       }
+       vec2 _rHash2(vec2 p) {
+         vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+         p3 += dot(p3, p3.yzx + 33.33);
+         return fract((p3.xx + p3.yz) * p3.zy);
+       }
+       float _rNoise(vec2 p) {
+         vec2 i = floor(p);
+         vec2 f = fract(p);
+         f = f * f * (3.0 - 2.0 * f);
+         return mix(
+           mix(_rHash(i), _rHash(i + vec2(1.0, 0.0)), f.x),
+           mix(_rHash(i + vec2(0.0, 1.0)), _rHash(i + vec2(1.0, 1.0)), f.x),
+           f.y
+         );
+       }
+       float _roadWetness(vec2 xz) {
+         float macro = _rNoise(xz * 0.14) * 0.62 + _rNoise(xz * 0.42) * 0.38;
+         float wheelRut = exp(-pow(abs(abs(xz.x) - 1.85), 2.0) * 0.9);
+         float curbDrain = exp(-pow(abs(abs(xz.x) - 4.15), 2.0) * 2.2) * 0.34;
+         return smoothstep(0.32, 0.78, macro + wheelRut * 0.32 + curbDrain);
+       }
+       vec3 _roadRainRipples(vec2 xz, float t) {
+         vec2 grad = vec2(0.0);
+         float shimmer = 0.0;
+         for (int layer = 0; layer < 2; layer++) {
+           float sc = layer == 0 ? 1.45 : 2.35;
+           float sp = layer == 0 ? 0.78 : 1.05;
+           float seed = layer == 0 ? 7.3 : 29.1;
+           vec2 uv = xz * sc + vec2(float(layer) * 4.1, float(layer) * -2.7);
+           vec2 cell = floor(uv);
+           vec2 f = fract(uv);
+           vec2 rnd = _rHash2(cell + seed);
+           if (rnd.x > 0.34) {
+             float cyc = t * sp + rnd.y * 6.2831;
+             float age = fract(cyc);
+             float cIdx = floor(cyc);
+             vec2 ctr = 0.2 + 0.6 * _rHash2(cell + cIdx * 13.7 + seed);
+             vec2 dv = f - ctr;
+             float d = length(dv);
+             float rad = age * (0.36 + 0.18 * rnd.x);
+             float band = d - rad;
+             float env = exp(-band * band * 130.0) * (1.0 - age) * (1.0 - age) * smoothstep(0.0, 0.07, age);
+             vec2 dir = d > 0.002 ? dv / d : vec2(0.0);
+             grad += dir * cos(band * 38.0) * env * (layer == 0 ? 0.14 : 0.09);
+             shimmer += max(0.0, sin(band * 38.0)) * env;
+           }
+         }
+         return vec3(grad, shimmer);
+       }
+      ` +
+      shader.fragmentShader
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+           float _wetMask = _roadWetness(vRoadWorldPos.xz);
+           float _flowFilm = _rNoise(vec2(vRoadWorldPos.x * 2.2, vRoadWorldPos.z * 0.65 - uRoadTime * 0.45));
+           roughnessFactor = mix(roughnessFactor, 0.42 + _flowFilm * 0.10, _wetMask * 0.72);`
+        )
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+           float _wetTint = _roadWetness(vRoadWorldPos.xz);
+           float _camDistRoad = length(cameraPosition - vRoadWorldPos);
+           float _ripFade = (1.0 - smoothstep(10.0, 30.0, _camDistRoad)) * _wetTint;
+           vec3 _ripSample = _roadRainRipples(vRoadWorldPos.xz, uRoadTime);
+           diffuseColor.rgb *= mix(1.0, 0.58, _wetTint);
+           // Subtle damp rain-impact sheen modulated by streetlamp proximity (zero glittery noise)
+           float _lampBand = (0.36 + 0.64 * pow(0.5 + 0.5 * cos(vRoadWorldPos.z * 0.35), 2.0)) * exp(-abs(vRoadWorldPos.x) * 0.14);
+           diffuseColor.rgb += mix(vec3(0.06, 0.09, 0.14), vec3(0.20, 0.14, 0.08), _lampBand) * _ripSample.z * _ripFade * 0.44;`
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+           float _wetNorm = _roadWetness(vRoadWorldPos.xz);
+           float _normFade = (1.0 - smoothstep(10.0, 30.0, length(cameraPosition - vRoadWorldPos))) * _wetNorm;
+           vec3 _ripN = _roadRainRipples(vRoadWorldPos.xz, uRoadTime);
+           normal = normalize(normal + vec3(_ripN.x, 0.0, _ripN.y) * _normFade * 0.38);`
+        );
+  };
+
   const materials: WorldMaterialSet = {
     house: new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: houseProc.map,
       normalMap: houseProc.normalMap,
-      normalScale: new THREE.Vector2(1.35, 1.35),
+      normalScale: new THREE.Vector2(1.4, 1.4),
       roughnessMap: houseProc.roughnessMap,
       aoMap: houseProc.aoMap,
-      aoMapIntensity: 0.85,
+      aoMapIntensity: 0.88,
       roughness: 1.0,
       metalness: 0.04,
     }),
@@ -1499,33 +1811,22 @@ export function createStarterWorldMaterials(
       color: 0xffffff,
       map: fenceProc.map,
       normalMap: fenceProc.normalMap,
-      normalScale: new THREE.Vector2(1.4, 1.4),
+      normalScale: new THREE.Vector2(1.45, 1.45),
       roughnessMap: fenceProc.roughnessMap,
       aoMap: fenceProc.aoMap,
       aoMapIntensity: 0.9,
       roughness: 1.0,
       metalness: 0.04,
     }),
-    road: new THREE.MeshStandardMaterial({
-      color: 0xdce2ea,
-      map: roadProc.map,
-      normalMap: roadProc.normalMap,
-      normalScale: new THREE.Vector2(1.2, 1.2),
-      roughnessMap: roadProc.roughnessMap,
-      aoMap: roadProc.aoMap,
-      aoMapIntensity: 0.72,
-      roughness: 0.74,
-      metalness: 0.26,
-      envMapIntensity: 1.45,
-    }),
+    road: roadMat,
     lawn: new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: lawnProc.map,
       normalMap: lawnProc.normalMap,
-      normalScale: new THREE.Vector2(1.25, 1.25),
+      normalScale: new THREE.Vector2(1.3, 1.3),
       roughnessMap: lawnProc.roughnessMap,
       aoMap: lawnProc.aoMap,
-      aoMapIntensity: 0.8,
+      aoMapIntensity: 0.82,
       roughness: 1.0,
       metalness: 0.03,
     }),
@@ -1533,12 +1834,12 @@ export function createStarterWorldMaterials(
       color: 0xffffff,
       map: roofProc.map,
       normalMap: roofProc.normalMap,
-      normalScale: new THREE.Vector2(1.45, 1.45),
+      normalScale: new THREE.Vector2(1.5, 1.5),
       roughnessMap: roofProc.roughnessMap,
       aoMap: roofProc.aoMap,
-      aoMapIntensity: 0.85,
+      aoMapIntensity: 0.88,
       roughness: 1.0,
-      metalness: 0.14,
+      metalness: 0.16,
     }),
     concrete: createArchitecturalConcreteMaterial(maxAnisotropy),
     woodTrim: createWoodTrimMaterial(maxAnisotropy),
@@ -1553,6 +1854,7 @@ export function createStarterWorldMaterials(
     frostedGlass: createFrostedGlassMaterial(maxAnisotropy),
     carPaint: createSovietCarPaintMaterial(maxAnisotropy),
     tireRubber: createTireRubberMaterial(maxAnisotropy),
+    roadTimeUniform,
   };
 
   loadGeneratedStarterTextures(materials, maxAnisotropy);
@@ -1635,11 +1937,11 @@ export function loadGeneratedStarterTextures(
   }).catch(() => {});
 
   void loadImageWithDerivedPBR(ASSET_PATHS.wetAsphalt, materials.road, maxAnisotropy, {
-    normalStrength: 2.6,
-    roughMin: 0.14, // wet night puddles catch sodium & flashlight highlights!
-    roughMax: 0.78,
-    grimeAmount: 0.18,
-    aoStrength: 0.7,
+    normalStrength: 1.35,
+    roughMin: 0.28, // smooth damp asphalt reflection without grazing-angle fireflies
+    roughMax: 0.84,
+    grimeAmount: 0.16,
+    aoStrength: 0.65,
   }).catch(() => {});
 
   void loadImageWithDerivedPBR(ASSET_PATHS.lawnGrass, materials.lawn, maxAnisotropy, {
@@ -2085,3 +2387,116 @@ export function createContactShadowTexture(): THREE.CanvasTexture {
   ctx.fillRect(0, 0, size, size);
   return new THREE.CanvasTexture(c);
 }
+
+/**
+ * Tactile leather gloves & weathered 1994 dark olive jacket cuff PBR textures
+ * for AAA first-person weapon viewmodel hands.
+ */
+export function createFirstPersonHandMaterials(maxAnisotropy = 8): {
+  leatherGlove: THREE.MeshPhysicalMaterial;
+  jacketSleeve: THREE.MeshPhysicalMaterial;
+  skinKnuckle: THREE.MeshPhysicalMaterial;
+} {
+  const rand = seededRand(1994555);
+
+  // Scuffed matte black-brown tactical leather glove texture
+  const lCanvas = document.createElement('canvas');
+  lCanvas.width = 256;
+  lCanvas.height = 256;
+  const lctx = lCanvas.getContext('2d', { willReadFrequently: true })!;
+  lctx.fillStyle = '#181614';
+  lctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 650; i++) {
+    lctx.fillStyle =
+      i % 2 === 0 ? 'rgba(46, 40, 36, 0.24)' : 'rgba(8, 7, 6, 0.34)';
+    lctx.beginPath();
+    lctx.arc(rand() * 256, rand() * 256, 1.5 + rand() * 4.5, 0, Math.PI * 2);
+    lctx.fill();
+  }
+  lctx.strokeStyle = 'rgba(72, 62, 54, 0.25)';
+  lctx.setLineDash([5, 5]);
+  lctx.lineWidth = 2;
+  lctx.strokeRect(18, 18, 220, 220);
+  const lPbr = buildSobelPbrTextures(lCanvas, maxAnisotropy, {
+    normalStrength: 1.6,
+    roughMin: 0.42,
+    roughMax: 0.78,
+    aoStrength: 0.65,
+  });
+
+  // Dark weathered Soviet autumn storm-parka sleeve (subtle matte canvas weave)
+  const jCanvas = document.createElement('canvas');
+  jCanvas.width = 256;
+  jCanvas.height = 256;
+  const jctx = jCanvas.getContext('2d', { willReadFrequently: true })!;
+  jctx.fillStyle = '#1d221e';
+  jctx.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < 256; y += 4) {
+    jctx.fillStyle = y % 8 === 0 ? 'rgba(10, 13, 11, 0.26)' : 'rgba(42, 48, 44, 0.14)';
+    jctx.fillRect(0, y, 256, 2);
+  }
+  for (let x = 0; x < 256; x += 4) {
+    jctx.fillStyle = x % 8 === 0 ? 'rgba(10, 13, 11, 0.2)' : 'rgba(38, 44, 40, 0.1)';
+    jctx.fillRect(x, 0, 2, 256);
+  }
+  const jPbr = buildSobelPbrTextures(jCanvas, maxAnisotropy, {
+    normalStrength: 1.4,
+    roughMin: 0.84,
+    roughMax: 0.98,
+    aoStrength: 0.72,
+  });
+
+  // Subtle muted leather knuckle accent
+  const sCanvas = document.createElement('canvas');
+  sCanvas.width = 128;
+  sCanvas.height = 128;
+  const sctx = sCanvas.getContext('2d', { willReadFrequently: true })!;
+  sctx.fillStyle = '#2a2420';
+  sctx.fillRect(0, 0, 128, 128);
+  const sPbr = buildSobelPbrTextures(sCanvas, maxAnisotropy, {
+    normalStrength: 1.2,
+    roughMin: 0.48,
+    roughMax: 0.76,
+    aoStrength: 0.5,
+  });
+
+  return {
+    leatherGlove: new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      map: lPbr.map,
+      normalMap: lPbr.normalMap,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+      roughnessMap: lPbr.roughnessMap,
+      roughness: 1.0,
+      metalness: 0.06,
+      clearcoat: 0.18,
+      clearcoatRoughness: 0.5,
+      sheen: 0.25,
+      sheenRoughness: 0.75,
+    }),
+    jacketSleeve: new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      map: jPbr.map,
+      normalMap: jPbr.normalMap,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+      roughnessMap: jPbr.roughnessMap,
+      roughness: 1.0,
+      metalness: 0.03,
+      sheen: 0.45,
+      sheenColor: new THREE.Color(0x2e3630),
+      sheenRoughness: 0.86,
+    }),
+    skinKnuckle: new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      map: sPbr.map,
+      normalMap: sPbr.normalMap,
+      normalScale: new THREE.Vector2(0.6, 0.6),
+      roughnessMap: sPbr.roughnessMap,
+      roughness: 1.0,
+      metalness: 0.05,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.55,
+    }),
+  };
+}
+

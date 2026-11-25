@@ -22,14 +22,46 @@ export interface StoryLogEntry {
 
 export type GameMode = 'story' | 'endless';
 
+export type ZoneId = 'hub' | 'suburb' | 'depot' | 'substation';
+
 export type GamePhase =
   | 'title'
+  | 'hub'
   | 'cutscene'
   | 'playing'
   | 'upgrade'
   | 'paused'
   | 'victory'
   | 'gameover';
+
+export interface CoopScalingProfile {
+  playerCount: number;
+  enemyHpMult: number;
+  enemyDamageMult: number;
+  enemySpeedMult: number;
+  maxActiveBonus: number;
+  spawnRateMult: number;
+  killTargetMult: number;
+  pickupDropChanceBonus: number;
+  ammoRefillMult: number;
+}
+
+export interface RangeDummySpec {
+  id: string;
+  kind: Exclude<EnemyKind, 'watchman'> | 'heavy';
+  x: number;
+  z: number;
+  maxHp: number;
+  distanceLabel: string;
+}
+
+export interface HubInteractiveAnchors {
+  carPos: { x: number; z: number };
+  carRadius: number;
+  terminalPos: { x: number; z: number };
+  terminalRadius: number;
+  rangeDummies: RangeDummySpec[];
+}
 
 export type UpgradeId =
   | 'buckshot_overpressure'
@@ -195,13 +227,24 @@ export interface ObjectiveSpec {
   completed: boolean;
 }
 
+export interface TapeSpec {
+  id: string;
+  chapterHint: number;
+  x: number;
+  z: number;
+  collected: boolean;
+}
+
 export interface SuburbLayout {
+  zoneId?: ZoneId;
   houses: HouseLot[];
   lamps: LampSpec[];
   colliders: AABB[];
   objectives: ObjectiveSpec[];
+  tapes: TapeSpec[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   spawn: { x: number; z: number; yaw: number };
+  hubAnchors?: HubInteractiveAnchors;
 }
 
 export interface CutsceneBeat {
@@ -221,6 +264,7 @@ export interface CutsceneDef {
 
 export interface ChapterDef {
   chapter: number;
+  zoneId: ZoneId;
   clockLabel: string;
   title: string;
   objectiveSummary: string;
@@ -344,6 +388,29 @@ export interface ObjectiveCompassState {
   relativeAngleRad: number; // 0 = ahead, +PI/2 = right, -PI/2 = left, PI = behind
 }
 
+export interface HubRangeHitInfo {
+  damage: number;
+  crit: boolean;
+  dummyLabel: string;
+  distanceMeters: number;
+  destroyed: boolean;
+}
+
+export interface HubSnapshot {
+  inCar: boolean;
+  boardedCount: number;
+  totalPlayers: number;
+  nearbyAction: 'car' | 'terminal' | null;
+  lastRangeHit: HubRangeHitInfo | null;
+}
+
+export interface CutsceneVoteSnapshot {
+  active: boolean;
+  voteCount: number;
+  totalPlayers: number;
+  localVoted: boolean;
+}
+
 export interface HudSnapshot {
   language: Language;
   roosterName: RoosterNameId;
@@ -354,6 +421,8 @@ export interface HudSnapshot {
   isPortrait: boolean;
   storyLog: StoryLogEntry | null;
   mode: GameMode;
+  zoneId: ZoneId;
+  totalChapters: number;
   loopNumber: number;
   phase: GamePhase;
   chapter: number;
@@ -400,6 +469,8 @@ export interface HudSnapshot {
   rooster: RoosterSnapshot;
   activeCutscene: CutsceneDef | null;
   cutsceneBeatIndex: number;
+  cutsceneVote: CutsceneVoteSnapshot;
+  hub: HubSnapshot;
   upgradeChoices: UpgradeId[];
   ownedUpgrades: UpgradeId[];
   records: RunRecords;
@@ -408,4 +479,25 @@ export interface HudSnapshot {
   character: CharacterProgressionState;
   levelUpToast: string | null;
   trackToast: string | null;
+  collectedTapes: string[];
+  tapesTotal: number;
+  coop: {
+    active: boolean;
+    roomCode: string | null;
+    isHost: boolean;
+    localDowned: boolean;
+    nearbyReviveName: string | null;
+    scaling: CoopScalingProfile;
+    squad: Array<{
+      id: string;
+      name: string;
+      hp: number;
+      maxHp: number;
+      isDowned: boolean;
+      isHost: boolean;
+      kills: number;
+      distanceMeters: number;
+    }>;
+    lastPingText: string | null;
+  };
 }

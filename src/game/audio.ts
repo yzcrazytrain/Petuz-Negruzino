@@ -33,9 +33,13 @@ export class NegruzinoAudio {
   private musicActive = false;
 
   // Optional user-loaded real MP3/OGG/WAV/FLAC cassette playlist (persisted in IndexedDB)
+  // Streams lazily with a SINGLE active Object URL (revoked immediately on switch/remove/dispose)
   private customAudioEl: HTMLAudioElement | null = null;
-  private customTracks: Array<{ id: string; name: string; url: string }> = [];
+  private customTracks: Array<{ id: string; name: string; blob: Blob }> = [];
+  private activeCustomObjectUrl: string | null = null;
   private activeCustomIdx = -1;
+  private customLoadToken = 0;
+  private consecutiveTrackErrors = 0;
   private onPlaylistChange?: (settings: MusicSettings) => void;
 
   public unlock(): void {
@@ -150,38 +154,67 @@ export class NegruzinoAudio {
     this.onPlaylistChange?.(this.getSettings());
   }
 
+  private revokeActiveCustomUrl(): void {
+    if (this.activeCustomObjectUrl) {
+      try {
+        URL.revokeObjectURL(this.activeCustomObjectUrl);
+      } catch {
+        // ignore
+      }
+      this.activeCustomObjectUrl = null;
+    }
+  }
+
   private ensureCustomAudioElement(): HTMLAudioElement {
     if (!this.customAudioEl) {
-      this.customAudioEl = new Audio();
-      this.customAudioEl.addEventListener('ended', () => {
+      const el = new Audio();
+      el.preload = 'metadata';
+      el.addEventListener('playing', () => {
+        this.consecutiveTrackErrors = 0;
+      });
+      el.addEventListener('ended', () => {
+        this.consecutiveTrackErrors = 0;
         if (this.customTracks.length > 1) {
           this.cycleCustomTrack();
-        } else if (this.customAudioEl && this.settings.customAudioName) {
+        } else if (this.customAudioEl && this.settings.customAudioName && !this.isPaused) {
           this.customAudioEl.currentTime = 0;
           void this.customAudioEl.play().catch(() => {});
         }
       });
+      el.addEventListener('error', () => {
+        // Never hang or spin infinitely if a track fails to decode
+        if (this.activeCustomIdx < 0) return;
+        this.consecutiveTrackErrors += 1;
+        if (this.customTracks.length > 1 && this.consecutiveTrackErrors < this.customTracks.length) {
+          this.cycleCustomTrack();
+        } else {
+          // All custom tracks failed or single broken file -> gracefully return to built-in soundtrack
+          this.stopCustomPlaybackToSynth();
+        }
+      });
+      this.customAudioEl = el;
     }
     return this.customAudioEl;
   }
 
   public async hydrateCustomPlaylist(): Promise<MusicSettings> {
-    const stored = await loadAllCustomTracks();
-    if (stored.length === 0) return this.getSettings();
-    for (const old of this.customTracks) {
-      URL.revokeObjectURL(old.url);
+    try {
+      const stored = await loadAllCustomTracks();
+      if (stored.length === 0) return this.getSettings();
+      this.revokeActiveCustomUrl();
+      this.customTracks = stored.map((rec) => ({
+        id: rec.id,
+        name: rec.name,
+        blob: rec.blob,
+      }));
+      // Prepare first track lazily without forcing eager decode of the whole playlist
+      this.activeCustomIdx = 0;
+      this.loadActiveTrackUrl(false);
+      this.syncPlaylistSettings();
+      this.applyGains();
+    } catch {
+      // Never throw on startup hydration failure
     }
-    this.customTracks = stored.map((rec) => ({
-      id: rec.id,
-      name: rec.name,
-      url: URL.createObjectURL(rec.blob),
-    }));
-    this.activeCustomIdx = 0;
-    const el = this.ensureCustomAudioElement();
-    el.src = this.customTracks[0].url;
-    el.volume = this.settings.muted ? 0 : this.settings.volume;
-    this.syncPlaylistSettings();
-    this.applyGains();
     return this.getSettings();
   }
 
@@ -198,15 +231,19 @@ export class NegruzinoAudio {
 
   public async addCustomAudioFiles(files: File[]): Promise<MusicSettings> {
     if (!files.length) return this.getSettings();
-    const saved = await saveCustomTrackFiles(files);
+    const { saved } = await saveCustomTrackFiles(files);
+    if (saved.length === 0) {
+      return this.getSettings();
+    }
     const startIdx = this.customTracks.length;
     for (const rec of saved) {
       this.customTracks.push({
         id: rec.id,
         name: rec.name,
-        url: URL.createObjectURL(rec.blob),
+        blob: rec.blob,
       });
     }
+    this.consecutiveTrackErrors = 0;
     this.selectCustomTrackByIndex(startIdx);
     return this.getSettings();
   }
@@ -218,22 +255,54 @@ export class NegruzinoAudio {
   public selectCustomTrack(id: string): MusicSettings {
     const idx = this.customTracks.findIndex((t) => t.id === id);
     if (idx >= 0) {
+      this.consecutiveTrackErrors = 0;
       this.selectCustomTrackByIndex(idx);
     }
     return this.getSettings();
   }
 
+  private loadActiveTrackUrl(autoPlay: boolean): void {
+    if (this.activeCustomIdx < 0 || this.activeCustomIdx >= this.customTracks.length) return;
+    const token = ++this.customLoadToken;
+    const track = this.customTracks[this.activeCustomIdx];
+    const el = this.ensureCustomAudioElement();
+
+    try {
+      el.pause();
+    } catch {
+      // ignore
+    }
+    this.revokeActiveCustomUrl();
+
+    let objectUrl: string;
+    try {
+      objectUrl = URL.createObjectURL(track.blob);
+    } catch {
+      this.stopCustomPlaybackToSynth();
+      return;
+    }
+    this.activeCustomObjectUrl = objectUrl;
+    el.src = objectUrl;
+    el.volume = this.settings.muted || this.isPaused ? 0 : this.settings.volume;
+    // Start streaming asynchronously without blocking the main thread
+    if (autoPlay && !this.isPaused) {
+      void Promise.resolve().then(() => {
+        if (token !== this.customLoadToken || !this.customAudioEl) return;
+        const p = this.customAudioEl.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            // Autoplay blocked or aborted by rapid switch — keep UI responsive
+          });
+        }
+      });
+    }
+  }
+
   private selectCustomTrackByIndex(idx: number): void {
     if (idx < 0 || idx >= this.customTracks.length) return;
     this.activeCustomIdx = idx;
-    const track = this.customTracks[idx];
-    const el = this.ensureCustomAudioElement();
-    el.src = track.url;
-    el.volume = this.settings.muted || this.isPaused ? 0 : this.settings.volume;
+    this.loadActiveTrackUrl(true);
     this.syncPlaylistSettings();
-    if (!this.isPaused) {
-      void el.play().catch(() => {});
-    }
     this.applyGains();
   }
 
@@ -254,16 +323,18 @@ export class NegruzinoAudio {
   public async removeCustomTrack(id: string): Promise<MusicSettings> {
     const idx = this.customTracks.findIndex((t) => t.id === id);
     if (idx < 0) return this.getSettings();
-    const [removed] = this.customTracks.splice(idx, 1);
-    URL.revokeObjectURL(removed.url);
+    this.customTracks.splice(idx, 1);
     await removeStoredCustomTrack(id);
 
     if (this.customTracks.length === 0) {
       this.activeCustomIdx = -1;
+      this.customLoadToken += 1;
       if (this.customAudioEl) {
         this.customAudioEl.pause();
-        this.customAudioEl.src = '';
+        this.customAudioEl.removeAttribute('src');
+        this.customAudioEl.load();
       }
+      this.revokeActiveCustomUrl();
       this.syncPlaylistSettings();
       this.applyGains();
     } else if (this.activeCustomIdx === idx) {
@@ -277,9 +348,17 @@ export class NegruzinoAudio {
 
   public stopCustomPlaybackToSynth(): MusicSettings {
     this.activeCustomIdx = -1;
+    this.customLoadToken += 1;
     if (this.customAudioEl) {
-      this.customAudioEl.pause();
+      try {
+        this.customAudioEl.pause();
+        this.customAudioEl.removeAttribute('src');
+        this.customAudioEl.load();
+      } catch {
+        // ignore
+      }
     }
+    this.revokeActiveCustomUrl();
     this.syncPlaylistSettings();
     this.applyGains();
     return this.getSettings();
@@ -290,13 +369,17 @@ export class NegruzinoAudio {
   }
 
   public async clearAllCustomTracks(): Promise<MusicSettings> {
+    this.customLoadToken += 1;
     if (this.customAudioEl) {
-      this.customAudioEl.pause();
-      this.customAudioEl.src = '';
+      try {
+        this.customAudioEl.pause();
+        this.customAudioEl.removeAttribute('src');
+        this.customAudioEl.load();
+      } catch {
+        // ignore
+      }
     }
-    for (const tr of this.customTracks) {
-      URL.revokeObjectURL(tr.url);
-    }
+    this.revokeActiveCustomUrl();
     this.customTracks = [];
     this.activeCustomIdx = -1;
     await clearAllStoredCustomTracks();
@@ -711,12 +794,66 @@ export class NegruzinoAudio {
     this.spawnPunchTone(now, 320 * pitchVar, 95, 0.055, 'triangle', 0.22);
   }
 
-  public playReload(): void {
+  public playReload(weaponId: WeaponId = 'shotgun', durationSec = 1.5): void {
     if (!this.ctx || !this.sfxGain || this.settings.muted) return;
     const now = this.ctx.currentTime;
-    this.spawnNoiseBurst(now, 0.07, 2100, 'bandpass', 0.22);
-    this.spawnPunchTone(now + 0.18, 420, 290, 0.08, 'square', 0.12);
-    this.spawnNoiseBurst(now + 0.45, 0.08, 3000, 'bandpass', 0.25);
+    const d = Math.max(0.6, durationSec);
+
+    if (weaponId === 'shotgun') {
+      // Crisp 12-gauge shells sliding into tube + heavy final forend rack
+      this.spawnNoiseBurst(now + d * 0.16, 0.055, 2200, 'bandpass', 0.22);
+      this.spawnPunchTone(now + d * 0.17, 520, 320, 0.05, 'triangle', 0.14);
+      this.spawnNoiseBurst(now + d * 0.42, 0.055, 2400, 'bandpass', 0.22);
+      this.spawnPunchTone(now + d * 0.43, 560, 340, 0.05, 'triangle', 0.14);
+      // Heavy pump-action rack clack near completion
+      this.spawnNoiseBurst(now + d * 0.72, 0.085, 1650, 'bandpass', 0.3);
+      this.spawnPunchTone(now + d * 0.73, 280, 170, 0.08, 'square', 0.16);
+      this.spawnNoiseBurst(now + d * 0.84, 0.075, 2900, 'bandpass', 0.28);
+      this.spawnPunchTone(now + d * 0.85, 440, 260, 0.06, 'triangle', 0.16);
+      return;
+    }
+
+    if (weaponId === 'awp') {
+      // Bolt unlock -> heavy magazine drop -> fresh mag lock -> crisp bolt slam
+      this.spawnNoiseBurst(now + d * 0.08, 0.06, 3200, 'bandpass', 0.24);
+      this.spawnPunchTone(now + d * 0.09, 680, 460, 0.05, 'square', 0.12);
+      this.spawnNoiseBurst(now + d * 0.28, 0.08, 1300, 'bandpass', 0.24);
+      this.spawnPunchTone(now + d * 0.29, 260, 140, 0.07, 'triangle', 0.18);
+      this.spawnNoiseBurst(now + d * 0.56, 0.07, 1950, 'bandpass', 0.28);
+      this.spawnPunchTone(now + d * 0.57, 360, 520, 0.06, 'square', 0.15);
+      this.spawnNoiseBurst(now + d * 0.8, 0.09, 3400, 'bandpass', 0.32);
+      this.spawnPunchTone(now + d * 0.82, 540, 290, 0.08, 'square', 0.18);
+      return;
+    }
+
+    if (weaponId === 'pistol') {
+      // Quick mag release -> snappy mag slap -> metallic slide rack
+      this.spawnNoiseBurst(now + d * 0.12, 0.045, 2600, 'bandpass', 0.2);
+      this.spawnPunchTone(now + d * 0.13, 620, 340, 0.045, 'triangle', 0.12);
+      this.spawnNoiseBurst(now + d * 0.48, 0.055, 1900, 'bandpass', 0.26);
+      this.spawnPunchTone(now + d * 0.49, 320, 490, 0.05, 'square', 0.15);
+      this.spawnNoiseBurst(now + d * 0.78, 0.07, 3600, 'bandpass', 0.28);
+      this.spawnPunchTone(now + d * 0.79, 860, 520, 0.05, 'square', 0.14);
+      return;
+    }
+
+    if (weaponId === 'minigun') {
+      // Heavy rotary drum unlatch -> metallic clunk -> fresh belt drum lock -> servo check
+      this.spawnNoiseBurst(now + d * 0.12, 0.1, 1100, 'lowpass', 0.3);
+      this.spawnPunchTone(now + d * 0.14, 190, 88, 0.12, 'sawtooth', 0.22);
+      this.spawnNoiseBurst(now + d * 0.48, 0.11, 1450, 'bandpass', 0.32);
+      this.spawnPunchTone(now + d * 0.5, 220, 145, 0.12, 'square', 0.22);
+      this.spawnPunchTone(now + d * 0.76, 130, 310, 0.18, 'sawtooth', 0.16);
+      this.spawnNoiseBurst(now + d * 0.84, 0.08, 2500, 'bandpass', 0.24);
+      return;
+    }
+
+    // P90 top translucent magazine unlatch, seat slap & charging handle snap
+    this.spawnNoiseBurst(now + d * 0.14, 0.05, 2400, 'bandpass', 0.22);
+    this.spawnPunchTone(now + d * 0.15, 580, 380, 0.05, 'triangle', 0.13);
+    this.spawnNoiseBurst(now + d * 0.54, 0.06, 1750, 'bandpass', 0.28);
+    this.spawnPunchTone(now + d * 0.55, 290, 440, 0.06, 'square', 0.16);
+    this.spawnNoiseBurst(now + d * 0.8, 0.065, 3300, 'bandpass', 0.26);
   }
 
   public playHitMarker(crit: boolean): void {
@@ -771,15 +908,61 @@ export class NegruzinoAudio {
   public playScreamer(reduced: boolean): void {
     if (!this.ctx || !this.sfxGain || this.settings.muted) return;
     const now = this.ctx.currentTime;
-    const vol = reduced ? 0.24 : 0.58;
-    const dur = reduced ? 0.48 : 0.88;
+    const vol = reduced ? 0.26 : 0.72;
+    const dur = reduced ? 0.52 : 1.05;
 
-    // 1. Sub-bass chest-thump impact drop
-    this.spawnPunchTone(now, 128, 32, dur * 0.65, 'sine', vol * 0.72);
-    this.spawnPunchTone(now, 92, 26, dur * 0.5, 'triangle', vol * 0.48);
+    // 1. Sudden visceral sub-bass chest slam + low dread rumble
+    this.spawnPunchTone(now, 145, 28, dur * 0.72, 'sine', vol * 0.88);
+    this.spawnPunchTone(now + 0.015, 98, 24, dur * 0.6, 'triangle', vol * 0.6);
 
-    // 2. Dissonant metallic screech chord with eerie detuned pitch glide
-    const freqs = [277, 392, 587, 830, 1244];
+    // 2. Terrifying distorted vocal-formant shriek (dual resonant formants sweeping erratically)
+    const shriekOsc = this.ctx.createOscillator();
+    const shriekMod = this.ctx.createOscillator();
+    const shriekModGain = this.ctx.createGain();
+    const shaper = this.ctx.createWaveShaper();
+    const formant1 = this.ctx.createBiquadFilter();
+    const shriekGain = this.ctx.createGain();
+
+    shriekOsc.type = 'sawtooth';
+    shriekOsc.frequency.setValueAtTime(640, now);
+    shriekOsc.frequency.exponentialRampToValueAtTime(1180, now + 0.07);
+    shriekOsc.frequency.linearRampToValueAtTime(920, now + 0.26);
+    shriekOsc.frequency.exponentialRampToValueAtTime(340, now + dur);
+
+    // Harsh growl FM rattle
+    shriekMod.type = 'sawtooth';
+    shriekMod.frequency.setValueAtTime(38, now);
+    shriekMod.frequency.linearRampToValueAtTime(62, now + 0.2);
+    shriekModGain.gain.setValueAtTime(185, now);
+    shriekMod.connect(shriekModGain);
+    shriekModGain.connect(shriekOsc.frequency);
+
+    if (this.distCurve) {
+      shaper.curve = this.distCurve;
+      shaper.oversample = '2x';
+    }
+    formant1.type = 'bandpass';
+    formant1.Q.value = 3.2;
+    formant1.frequency.setValueAtTime(1650, now);
+    formant1.frequency.exponentialRampToValueAtTime(2800, now + 0.12);
+    formant1.frequency.exponentialRampToValueAtTime(980, now + dur);
+
+    shriekGain.gain.setValueAtTime(0.001, now);
+    shriekGain.gain.linearRampToValueAtTime(vol * 0.56, now + 0.014);
+    shriekGain.gain.setValueAtTime(vol * 0.46, now + dur * 0.35);
+    shriekGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    shriekOsc.connect(shaper);
+    shaper.connect(formant1);
+    formant1.connect(shriekGain);
+    shriekGain.connect(this.sfxGain);
+    shriekOsc.start(now);
+    shriekMod.start(now);
+    shriekOsc.stop(now + dur + 0.04);
+    shriekMod.stop(now + dur + 0.04);
+
+    // 3. Dissonant tritone metallic brass-sting chord
+    const freqs = [293.66, 415.3, 622.25, 932.33, 1396.9];
     freqs.forEach((f, idx) => {
       if (!this.ctx || !this.sfxGain) return;
       const osc = this.ctx.createOscillator();
@@ -787,16 +970,16 @@ export class NegruzinoAudio {
       const g = this.ctx.createGain();
       osc.type = idx % 2 === 0 ? 'sawtooth' : 'square';
       filter.type = 'bandpass';
-      filter.Q.value = 2.4;
-      filter.frequency.setValueAtTime(f * 1.4, now);
-      filter.frequency.exponentialRampToValueAtTime(Math.max(180, f * 0.55), now + dur);
+      filter.Q.value = 2.8;
+      filter.frequency.setValueAtTime(f * 1.45, now);
+      filter.frequency.exponentialRampToValueAtTime(Math.max(210, f * 0.52), now + dur);
 
-      osc.frequency.setValueAtTime(f * (1 + idx * 0.015), now);
-      osc.frequency.linearRampToValueAtTime(f * 1.12, now + 0.08);
-      osc.frequency.exponentialRampToValueAtTime(f * 0.58, now + dur);
+      osc.frequency.setValueAtTime(f * (1 + idx * 0.018), now);
+      osc.frequency.linearRampToValueAtTime(f * 1.15, now + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.54, now + dur);
 
       g.gain.setValueAtTime(0.001, now);
-      g.gain.linearRampToValueAtTime(vol * 0.22, now + 0.02);
+      g.gain.linearRampToValueAtTime(vol * 0.2, now + 0.016);
       g.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
       osc.connect(filter);
@@ -806,9 +989,12 @@ export class NegruzinoAudio {
       osc.stop(now + dur + 0.03);
     });
 
-    // 3. Layered analog tape-rip & metallic scrape noise
-    this.spawnNoiseBurst(now, dur * 0.45, 3100, 'highpass', vol * 0.52);
-    this.spawnNoiseBurst(now + 0.04, dur * 0.72, 1150, 'bandpass', vol * 0.55);
+    // 4. Layered tape-rip hiss & jagged close-up breath static burst
+    this.spawnNoiseBurst(now, dur * 0.42, 3600, 'highpass', vol * 0.58);
+    this.spawnNoiseBurst(now + 0.03, dur * 0.78, 1280, 'bandpass', vol * 0.62);
+    if (!reduced) {
+      this.spawnNoiseBurst(now + 0.14, 0.14, 2400, 'bandpass', vol * 0.46);
+    }
   }
 
   public playExeGlitch(): void {
@@ -924,7 +1110,20 @@ export class NegruzinoAudio {
       window.clearInterval(this.stepTimer);
       this.stepTimer = null;
     }
-    this.clearCustomAudioFile();
+    this.customLoadToken += 1;
+    if (this.customAudioEl) {
+      try {
+        this.customAudioEl.pause();
+        this.customAudioEl.removeAttribute('src');
+        this.customAudioEl.load();
+      } catch {
+        // ignore
+      }
+      this.customAudioEl = null;
+    }
+    this.revokeActiveCustomUrl();
+    this.customTracks = [];
+    this.activeCustomIdx = -1;
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;

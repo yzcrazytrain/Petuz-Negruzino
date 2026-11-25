@@ -18,9 +18,17 @@
    npm install
    npm start
 
+4. LAN КООПЕРАТИВ (ДО 4 ИГРОКОВ ПО WI-FI / ETHERNET):
+   Запустите сервер на одном ПК (`npm run dev` или `npm start`), откройте
+   в меню «LAN Кооп» и передайте друзьям показанный адрес `http://<IP>:3000`
+   и код комнаты — они могут зайти с любого ПК или смартфона в вашей сети.
+
 ================================================================
 ENGLISH INSTRUCTIONS:
 - Offline play immediately: open app.html in any modern browser.
 - Build standalone Windows NEGRUZINO.exe: install Node.js LTS, then
   double-click build-exe.bat (or run `npm install && npm run dist`).
   Output: dist\NEGRUZINO.exe (press F11 for fullscreen).
+- LAN Co-op (up to 4 players): start the server (`npm run dev` or
+  `npm start`), open "LAN Co-op", and share the displayed `http://<IP>:3000`
+  URL + room code with teammates on your Wi-Fi / LAN.

@@ -1,5 +1,5 @@
+import { CAMPAIGN_CHAPTERS } from './campaign';
 import type {
-  ChapterDef,
   CutsceneDef,
   CustomTextureSpec,
   DifficultyId,
@@ -241,105 +241,7 @@ export const VICTORY_CUTSCENE: CutsceneDef = {
   ],
 };
 
-export const CHAPTERS: ChapterDef[] = [
-  {
-    chapter: 1,
-    clockLabel: '00:00',
-    title: 'Chapter 1: Cul-de-Sac Loop',
-    objectiveSummary: 'Restore 2 street fuse boxes and survive the first ambush.',
-    targetKills: 4,
-    hasBoss: false,
-    spawnWeights: { crawler: 0.65, lampshade: 0.25, screamer: 0.1 },
-    maxActiveEnemies: 5,
-    introCutscene: {
-      id: 'ch1_intro',
-      chapter: 1,
-      title: 'Chapter 1 · Cul-de-Sac Loop',
-      subtitle: 'NEGRUZINO Suburb · October 1994 · 00:00',
-      image: ASSET_PATHS.cutsceneStreet,
-      beats: [
-        {
-          speaker: 'EMERGENCY TAPE #14',
-          timestamp: '00:00:03',
-          text: 'Every night at midnight, the road out of NEGRUZINO folds back onto House #14. The sodium streetlamps buzz louder whenever the fog climbs the fences.',
-        },
-        {
-          speaker: 'GRISHA THE ROOSTER',
-          timestamp: '00:00:11',
-          text: 'Only your red-crested rooster Grisha refuses to freeze when the loop resets. He hops between yards, flies around your shoulders, and crows whenever something hides behind the pickets.',
-        },
-        {
-          speaker: 'OBJECTIVE BRIEF',
-          timestamp: '00:00:19',
-          text: 'Your trunk cache holds five firearms — from the close-range 1-tap shotgun to the scoped AWP, auto-reload P90, and rotary minigun. Restore the two street Fuse Boxes [E], watch for screamers, and pat Grisha [F] to keep your nerve steady.',
-        },
-      ],
-    },
-  },
-  {
-    chapter: 2,
-    clockLabel: '00:13',
-    title: 'Chapter 2: Behind the Fences',
-    objectiveSummary: 'Cross the fenced lawns and align 3 Signal Relays.',
-    targetKills: 7,
-    hasBoss: false,
-    spawnWeights: { crawler: 0.4, lampshade: 0.35, screamer: 0.25 },
-    maxActiveEnemies: 7,
-    introCutscene: {
-      id: 'ch2_intro',
-      chapter: 2,
-      title: 'Chapter 2 · Behind the Fences',
-      subtitle: 'The backyards no longer match their house numbers.',
-      image: ASSET_PATHS.cutsceneWatchman,
-      beats: [
-        {
-          speaker: 'INTERFERENCE · 00:13',
-          timestamp: '00:13:02',
-          text: 'The fuse surge woke something in the damp gardens. Shadows wearing long coats are stepping through the picket gates whenever you turn your back.',
-        },
-        {
-          speaker: 'GRISHA THE ROOSTER',
-          timestamp: '00:13:09',
-          text: 'Grisha circles overhead in frantic arcs. Listen for his crow — Hollow Screamers are slipping along the fence lines, ready to ambush at close range.',
-        },
-        {
-          speaker: 'OBJECTIVE BRIEF',
-          timestamp: '00:13:18',
-          text: 'Enter the fenced lawns and activate all three courtyard Signal Relays [E]. Use the P90 or shotgun in tight yards, and pick off distant silhouettes with the AWP [RMB scope].',
-        },
-      ],
-    },
-  },
-  {
-    chapter: 3,
-    clockLabel: '00:59',
-    title: 'Chapter 3: The Midnight Watchman',
-    objectiveSummary: 'Defeat the Midnight Watchman in the central square.',
-    targetKills: 1,
-    hasBoss: true,
-    spawnWeights: { crawler: 0.45, lampshade: 0.3, screamer: 0.25 },
-    maxActiveEnemies: 6,
-    introCutscene: {
-      id: 'ch3_intro',
-      chapter: 3,
-      title: 'Chapter 3 · The Midnight Watchman',
-      subtitle: 'All streetlamps point toward the central square.',
-      image: ASSET_PATHS.cutsceneWatchman,
-      beats: [
-        {
-          speaker: 'TRANSFORMER TOWER · 00:59',
-          timestamp: '00:59:04',
-          text: 'With all relays linked, the fog parts around the central transformer mast. The keeper of the loop has stepped off the porch of House #00.',
-        },
-        {
-          speaker: 'GRISHA THE ROOSTER',
-          timestamp: '00:59:12',
-          text: 'Grisha bristles his emerald tail feathers and flutters beside your barrel. Spin up the rotary minigun or line up AWP headshots — break the Watchman lantern to end 1994.',
-        },
-      ],
-    },
-  },
-];
+export const CHAPTERS = CAMPAIGN_CHAPTERS;
 
 export interface MusicTrackMeta {
   id: MusicTrackId;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Music, Pause, Sliders, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Car, Music, Pause, Sliders, Volume2, VolumeX } from 'lucide-react';
 import { WEAPON_ORDER, WEAPONS } from '../game/constants';
-import { localizeRoosterCopy, TRANSLATIONS } from '../game/i18n';
+import { localizeRoosterCopy, stripPcKeyHints, TRANSLATIONS } from '../game/i18n';
 import { formatBindingLabel } from '../game/keybinds';
 import type { HudSnapshot, WeaponId } from '../game/types';
 import { RoosterCrestIcon, WeaponSilhouetteIcon } from './GameIcons';
@@ -15,6 +15,8 @@ interface GameHudProps {
   onToggleMute: () => void;
   onNextTrack: () => void;
   onOpenWorkshop: () => void;
+  onBoardMoskvitch?: () => void;
+  onOpenHubSpecs?: () => void;
 }
 
 export function GameHud({
@@ -25,6 +27,8 @@ export function GameHud({
   onToggleMute,
   onNextTrack,
   onOpenWorkshop,
+  onBoardMoskvitch,
+  onOpenHubSpecs,
 }: GameHudProps) {
   // Trailing white/amber ghost health bar for weight-scaled damage feedback
   const [ghostHp, setGhostHp] = useState(hud.hp);
@@ -99,7 +103,7 @@ export function GameHud({
           <div className="fixed top-0 bottom-0 left-1/2 w-[1px] bg-black/85" />
           <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-[#c93b3b]" />
           <div className="fixed left-1/2 top-[62%] -translate-x-1/2 font-mono-num text-[11px] text-[#5fa88e] tracking-widest">
-            AWP-96 · 3.2× · [{scopeKey}]
+            {isTouch ? 'AWP-96 · 3.2×' : `AWP-96 · 3.2× · [${scopeKey}]`}
           </div>
         </div>
       )}
@@ -154,10 +158,76 @@ export function GameHud({
         </div>
       )}
 
-      {/* Interact Prompt near Fuse Boxes / Relays (Desktop only; Mobile shows tap button) */}
+      {/* Interact Prompt near Fuse Boxes / Relays / Hub Car / Specs Terminal (Desktop only) */}
       {hud.nearbyInteractLabel && !isTouch && (
-        <div className="fixed left-1/2 top-[60%] -translate-x-1/2 px-4 py-1.5 rounded bg-[#0d121b]/92 border border-[#5fa88e]/65 text-[#5fa88e] font-mono-num text-xs tracking-wider uppercase hud-text-shadow">
+        <div
+          data-testid="interact-prompt"
+          className="fixed left-1/2 top-[60%] -translate-x-1/2 px-4 py-1.5 rounded bg-[#0d121b]/92 border border-[#5fa88e]/65 text-[#5fa88e] font-mono-num text-xs tracking-wider uppercase hud-text-shadow"
+        >
           {hud.nearbyInteractLabel}
+        </div>
+      )}
+
+      {/* Pre-Match Hub: Firing Range Hit Readout */}
+      {hud.phase === 'hub' && hud.hub.lastRangeHit && (
+        <div
+          data-testid="hub-range-hit"
+          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#141e2b]/94 border border-[#e8963a]/75 text-[#f7cf86] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
+            hud.isPortrait ? 'top-[174px]' : 'top-16'
+          }`}
+        >
+          {t.hub.rangeHitReadout(
+            hud.hub.lastRangeHit.dummyLabel,
+            hud.hub.lastRangeHit.damage,
+            hud.hub.lastRangeHit.distanceMeters,
+            hud.hub.lastRangeHit.crit,
+            hud.hub.lastRangeHit.destroyed
+          )}
+        </div>
+      )}
+
+      {/* Pre-Match Hub: Moskvitch Launch & Specs Terminal Quick Bar */}
+      {hud.phase === 'hub' && (
+        <div
+          data-testid="hub-action-bar"
+          className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-wrap items-center justify-center rounded bg-[#0f1722]/92 border border-[#e8963a]/50 shadow-xl max-w-[94vw] ${
+            hud.isPortrait ? 'top-[116px] gap-1.5 px-2.5 py-1.5' : 'top-3 gap-2 px-3 py-2'
+          }`}
+        >
+          <span
+            data-testid="hub-moskvitch-counter"
+            className="font-mono-num text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#f3cf88] whitespace-nowrap"
+          >
+            {t.hub.moskvitchCounter(hud.hub.boardedCount, hud.hub.totalPlayers)}
+          </span>
+          <button
+            type="button"
+            data-testid="hub-board-car-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onBoardMoskvitch?.();
+            }}
+            className={`px-2.5 sm:px-3 py-1 rounded font-display text-xs sm:text-sm font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+              hud.hub.inCar
+                ? 'bg-[#2a1518] border border-[#c93b3b]/70 text-[#ffd2d2] hover:bg-[#c93b3b]'
+                : 'bg-[#e8963a] text-[#0b0f17] hover:bg-[#f2a853]'
+            }`}
+          >
+            <Car className="w-3.5 h-3.5 shrink-0" />
+            <span>{hud.hub.inCar ? t.hub.moskvitchLeaveBtn : t.hub.moskvitchBoardBtn}</span>
+          </button>
+          <button
+            type="button"
+            data-testid="hub-specs-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenHubSpecs?.();
+            }}
+            className="px-2.5 sm:px-3 py-1 rounded bg-[#182436] border border-[#5fa88e]/60 text-[#9cecd0] font-display text-xs sm:text-sm font-bold uppercase tracking-wider inline-flex items-center gap-1.5 hover:bg-[#5fa88e] hover:text-[#0b0f17] transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <span>{t.hub.terminalBtn}</span>
+          </button>
         </div>
       )}
 
@@ -167,9 +237,13 @@ export function GameHud({
           data-testid="story-radio-log"
           aria-live="polite"
           className={`fixed left-1/2 -translate-x-1/2 rounded bg-[#0a0f18]/90 border border-[#e8963a]/35 shadow-lg shadow-black/50 pointer-events-none ${
-            isTouch
-              ? 'bottom-12 w-[min(340px,46vw)] px-2.5 py-1.5'
-              : 'bottom-20 w-[min(480px,78vw)] px-3.5 py-2'
+            hud.isPortrait
+              ? hud.phase === 'hub'
+                ? 'top-[212px] w-[min(356px,92vw)] px-2.5 py-1.5'
+                : 'top-[178px] w-[min(356px,92vw)] px-2.5 py-1.5'
+              : isTouch
+                ? 'top-14 w-[min(360px,48vw)] px-2.5 py-1.5'
+                : 'bottom-20 w-[min(480px,78vw)] px-3.5 py-2'
           }`}
         >
           <div className="flex items-center gap-1.5 text-[10px] font-mono-num uppercase tracking-widest text-[#e8963a] font-bold">
@@ -181,7 +255,7 @@ export function GameHud({
               isTouch ? 'text-[11px] line-clamp-2' : 'text-xs'
             }`}
           >
-            {hud.storyLog.text}
+            {isTouch ? stripPcKeyHints(hud.storyLog.text) : hud.storyLog.text}
           </p>
         </div>
       )}
@@ -197,7 +271,9 @@ export function GameHud({
       {hud.levelUpToast && !hud.rooster.alertActive && (
         <div
           data-testid="level-up-toast"
-          className="fixed top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#14231e]/94 border border-[#5fa88e]/75 text-[#b5f2dc] font-mono-num text-[11px] font-bold tracking-widest uppercase whitespace-nowrap shadow-lg"
+          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#14231e]/94 border border-[#5fa88e]/75 text-[#b5f2dc] font-mono-num text-[11px] font-bold tracking-widest uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
+            isTouch && hud.isPortrait ? 'top-[142px]' : 'top-3'
+          }`}
         >
           {hud.levelUpToast}
         </div>
@@ -207,8 +283,14 @@ export function GameHud({
       {hud.trackToast && (
         <div
           data-testid="track-toast"
-          className={`fixed left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded bg-[#0d121b]/94 border border-[#e8963a]/65 text-[#f0aa54] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-[320px] truncate shadow-lg ${
-            hud.rooster.alertActive || hud.levelUpToast ? 'top-12' : 'top-3'
+          className={`fixed left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded bg-[#0d121b]/94 border border-[#e8963a]/65 text-[#f0aa54] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-[min(320px,90vw)] truncate shadow-lg ${
+            isTouch && hud.isPortrait
+              ? hud.rooster.alertActive || hud.levelUpToast
+                ? 'top-[176px]'
+                : 'top-[142px]'
+              : hud.rooster.alertActive || hud.levelUpToast
+                ? 'top-12'
+                : 'top-3'
           }`}
         >
           ♪ {hud.trackToast}
@@ -217,7 +299,14 @@ export function GameHud({
 
       {/* Rooster Danger Alert Banner */}
       {hud.rooster.alertActive && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#1a0d10]/92 border border-[#c93b3b]/70 flex items-center gap-2 max-w-md">
+        <div
+          data-testid="rooster-alert-banner"
+          className={`fixed left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded bg-[#1a0d10]/94 border border-[#c93b3b]/75 flex items-center gap-2 shadow-lg ${
+            isTouch && hud.isPortrait
+              ? 'top-[142px] max-w-[92vw]'
+              : 'top-3 max-w-md'
+          }`}
+        >
           <RoosterCrestIcon className="w-4 h-4 shrink-0" />
           <span
             aria-hidden="true"
@@ -236,9 +325,36 @@ export function GameHud({
         </div>
       )}
 
-      {/* Boss Bar (Chapter 3 Midnight Watchman) */}
+      {/* LAN Co-op Downed Alert & Squad Ping Callout */}
+      {hud.coop.active && hud.coop.localDowned && (
+        <div
+          data-testid="coop-downed-banner"
+          className={`fixed left-1/2 -translate-x-1/2 px-4 py-1.5 rounded bg-[#2a0c10]/94 border border-[#c93b3b]/85 text-[#ffd2d2] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
+            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
+          }`}
+        >
+          {isTouch ? stripPcKeyHints(t.lanCoop.downedBanner) : t.lanCoop.downedBanner}
+        </div>
+      )}
+
+      {hud.coop.active && hud.coop.lastPingText && !hud.coop.localDowned && (
+        <div
+          data-testid="coop-ping-banner"
+          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1 rounded bg-[#10221c]/92 border border-[#5fa88e]/70 text-[#9cecd0] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
+            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
+          }`}
+        >
+          ◎ {hud.coop.lastPingText}
+        </div>
+      )}
+
+      {/* Boss Bar (Chapter 6 Midnight Watchman) */}
       {hud.bossActive && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 w-[min(420px,72vw)] px-3.5 py-1.5 rounded bg-[#0d121b]/90 border border-[#e8963a]/40">
+        <div
+          className={`fixed left-1/2 -translate-x-1/2 w-[min(420px,88vw)] px-3.5 py-1.5 rounded bg-[#0d121b]/90 border border-[#e8963a]/40 ${
+            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
+          }`}
+        >
           <div className="flex items-center justify-between text-[11px] font-mono-num mb-1">
             <span className="text-[#e8963a] font-bold tracking-widest">
               {hud.bossName}
@@ -260,18 +376,23 @@ export function GameHud({
 
       {/* TOP-LEFT CLUSTER: Clean Objective, Compass & Mobile Compact Vitality */}
       <div
+        data-testid="hud-objective-card"
         className={`fixed top-3 left-3 bg-[#0d121b]/86 border border-[#ece7dc]/14 rounded ${
-          isTouch ? 'max-w-[235px] px-2.5 py-1.5 space-y-1' : 'max-w-sm px-3.5 py-2.5'
+          isTouch ? 'max-w-[198px] px-2.5 py-1.5 space-y-1' : 'max-w-sm px-3.5 py-2.5'
         }`}
       >
-        <div className="flex items-center flex-wrap gap-1.5 text-[11px] font-mono-num text-[#9aa3b0]">
-          <span className="text-[#e8963a] font-bold tracking-wider">
+        <div
+          className={`flex items-center gap-1 text-[11px] font-mono-num text-[#9aa3b0] ${
+            isTouch ? 'flex-nowrap overflow-hidden' : 'flex-wrap gap-1.5'
+          }`}
+        >
+          <span className="text-[#e8963a] font-bold tracking-wider shrink-0">
             {hud.clockLabel}
           </span>
-          <span aria-hidden="true">·</span>
+          <span aria-hidden="true" className="shrink-0">·</span>
           <span
             className={`text-[#ece7dc] font-semibold uppercase tracking-wide ${
-              isTouch ? 'truncate max-w-[155px]' : ''
+              isTouch ? 'truncate min-w-0' : ''
             }`}
           >
             {hud.chapterTitle}
@@ -286,13 +407,25 @@ export function GameHud({
           {hud.objectiveText}
         </p>
         <div className="mt-1 flex items-center flex-wrap gap-2 text-[10px] font-mono-num text-[#9aa3b0]">
-          <span>
-            {t.kills} {hud.kills}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {t.score} {hud.score}
-          </span>
+          {hud.phase === 'hub' ? (
+            <span className="text-[#5fa88e] font-bold uppercase tracking-wider">
+              {t.hub.ammoInfiniteBadge}
+            </span>
+          ) : (
+            <>
+              <span className="text-[#5fa88e] font-semibold uppercase truncate max-w-[140px]">
+                {t.zoneNames[hud.zoneId]}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {t.kills} {hud.kills}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {t.score} {hud.score}
+              </span>
+            </>
+          )}
           {hud.objectiveCompass.active && (
             <>
               <span aria-hidden="true">·</span>
@@ -314,6 +447,29 @@ export function GameHud({
                 </span>
               </span>
             </>
+          )}
+          {hud.phase === 'playing' && hud.mode === 'story' && hud.tapesTotal > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span
+                data-testid="hud-tapes-counter"
+                className="text-[#e8963a] font-semibold"
+              >
+                {t.tapesCounterLabel} {hud.collectedTapes.length}/{hud.tapesTotal}
+              </span>
+            </>
+          )}
+          {hud.phase === 'playing' && hud.coop.scaling.playerCount > 1 && (
+            <span
+              data-testid="hud-coop-scaling-badge"
+              className="px-1.5 py-0.5 rounded bg-[#142923] border border-[#5fa88e]/55 text-[#8ee6c6] font-bold"
+            >
+              {t.lanCoop.scalingBadge(
+                hud.coop.scaling.playerCount,
+                `×${hud.coop.scaling.enemyHpMult.toFixed(2)}`,
+                `×${hud.coop.scaling.enemyDamageMult.toFixed(2)}`
+              )}
+            </span>
           )}
           {hud.combo >= 2 && (
             <span className="px-1 py-0.5 rounded bg-[#e8963a]/20 border border-[#e8963a]/55 text-[#e8963a] font-bold">
@@ -357,8 +513,8 @@ export function GameHud({
               e.currentTarget.blur();
               onNextTrack();
             }}
-            aria-label={`${t.nextTrackBtn} [${trackKey}]`}
-            title={`${t.nextTrackBtn} [${trackKey}]`}
+            aria-label={isTouch ? stripPcKeyHints(t.nextTrackBtn) : `${t.nextTrackBtn} [${trackKey}]`}
+            title={isTouch ? stripPcKeyHints(t.nextTrackBtn) : `${t.nextTrackBtn} [${trackKey}]`}
             className="w-9 h-9 flex items-center justify-center rounded bg-[#0d121b]/88 border border-[#ece7dc]/18 text-[#e8963a] hover:border-[#e8963a] hover:bg-[#1a2230] transition-colors cursor-pointer"
           >
             <Music className="w-4 h-4" />
@@ -383,8 +539,20 @@ export function GameHud({
               e.currentTarget.blur();
               onToggleMute();
             }}
-            aria-label={hud.muted ? t.unmuteAudio : t.muteAudio}
-            title={hud.muted ? t.unmuteAudio : t.muteAudio}
+            aria-label={
+              isTouch
+                ? stripPcKeyHints(hud.muted ? t.unmuteAudio : t.muteAudio)
+                : hud.muted
+                  ? t.unmuteAudio
+                  : t.muteAudio
+            }
+            title={
+              isTouch
+                ? stripPcKeyHints(hud.muted ? t.unmuteAudio : t.muteAudio)
+                : hud.muted
+                  ? t.unmuteAudio
+                  : t.muteAudio
+            }
             className="w-9 h-9 flex items-center justify-center rounded bg-[#0d121b]/88 border border-[#ece7dc]/18 text-[#ece7dc] hover:border-[#e8963a] hover:text-[#e8963a] transition-colors cursor-pointer"
           >
             {hud.muted ? (
@@ -400,8 +568,8 @@ export function GameHud({
               e.currentTarget.blur();
               onPause();
             }}
-            aria-label={t.pauseGame}
-            title={t.pauseGame}
+            aria-label={isTouch ? stripPcKeyHints(t.pauseGame) : t.pauseGame}
+            title={isTouch ? stripPcKeyHints(t.pauseGame) : t.pauseGame}
             className="w-9 h-9 flex items-center justify-center rounded bg-[#0d121b]/88 border border-[#ece7dc]/18 text-[#ece7dc] hover:border-[#e8963a] hover:text-[#e8963a] transition-colors cursor-pointer"
           >
             <Pause className="w-4 h-4" />
@@ -420,11 +588,77 @@ export function GameHud({
             <span className="text-[11px] text-[#9aa3b0]">/{activeAmmo.reserve}</span>
           </div>
         )}
+
+        {/* Compact LAN Co-op Squad Panel (only visible during active LAN Co-op sessions) */}
+        {hud.coop.active && (
+          <div
+            data-testid="coop-squad-hud"
+            className="w-56 px-2.5 py-2 rounded bg-[#0d121b]/88 border border-[#5fa88e]/45 space-y-1.5"
+          >
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono-num uppercase tracking-wider whitespace-nowrap">
+              <span className="text-[#5fa88e] font-bold">
+                {t.lanCoop.squadHeading}
+              </span>
+              <span className="text-[#e8963a] font-bold tracking-widest">
+                {hud.coop.roomCode}
+              </span>
+            </div>
+            {hud.coop.squad.length === 0 ? (
+              <div className="text-[10px] font-mono-num text-[#9aa3b0]">
+                {hud.language === 'ru' ? 'Ожидание напарников...' : 'Waiting for squad...'}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {hud.coop.squad.map((mate) => {
+                  const pct = Math.max(
+                    0,
+                    Math.min(100, (mate.hp / Math.max(1, mate.maxHp)) * 100)
+                  );
+                  return (
+                    <div key={mate.id} className="space-y-0.5">
+                      <div className="flex items-center justify-between gap-1 text-[10px] font-mono-num">
+                        <span className="text-[#ece7dc] font-semibold truncate">
+                          {mate.name}
+                        </span>
+                        <span
+                          className={
+                            mate.isDowned
+                              ? 'text-[#ff7878] font-bold'
+                              : 'text-[#9aa3b0]'
+                          }
+                        >
+                          {mate.isDowned
+                            ? hud.language === 'ru'
+                              ? 'РАНЕН'
+                              : 'DOWN'
+                            : `${mate.distanceMeters}${t.metersSuffix}`}
+                        </span>
+                      </div>
+                      <div className="h-1 w-full bg-[#1a2230] rounded-xs overflow-hidden">
+                        <div
+                          className={`h-full ${
+                            mate.isDowned ? 'bg-[#c93b3b]' : 'bg-[#5fa88e]'
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {!isTouch && (
+              <div className="pt-1 border-t border-[#ece7dc]/10 text-[9px] font-mono-num uppercase tracking-wider text-[#9aa3b0]">
+                {t.lanCoop.pingHint}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* DESKTOP BOTTOM-LEFT CLUSTER: Health + Stamina + Rooster Companion (Hidden on Mobile Touch) */}
       {!isTouch && (
-        <div className="fixed bottom-4 left-4 w-72 space-y-2">
+        <div className="fixed bottom-3 sm:bottom-4 left-2.5 sm:left-4 w-[170px] sm:w-72 space-y-2">
           <div className="bg-[#0d121b]/86 border border-[#ece7dc]/14 px-3 py-2 rounded flex items-center justify-between gap-2 pointer-events-auto">
             <div className="flex items-center gap-2 min-w-0">
               <RoosterCrestIcon className="w-6 h-6 shrink-0" />
@@ -503,7 +737,7 @@ export function GameHud({
 
       {/* DESKTOP BOTTOM-RIGHT CLUSTER: Active Weapon Readout + 1-5 Arsenal Strip (Hidden on Mobile Touch) */}
       {!isTouch && (
-        <div className="fixed bottom-4 right-4 w-[320px] space-y-1.5">
+        <div className="fixed bottom-3 sm:bottom-4 right-2.5 sm:right-4 w-[192px] sm:w-[320px] space-y-1.5">
           <div className="bg-[#0d121b]/86 border border-[#ece7dc]/14 px-3.5 py-2.5 rounded">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -581,9 +815,9 @@ export function GameHud({
         </div>
       )}
 
-      {/* Subtle Pointer-Lock Prompt (Desktop PC ONLY — never shown on touch smartphones) */}
+      {/* Subtle Pointer-Lock Prompt (Desktop PC ONLY — never shown on touch smartphones or narrow portrait) */}
       {!hud.pointerLocked && !isTouch && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-[#0d121b]/80 border border-[#ece7dc]/14 text-[11px] font-mono-num text-[#ece7dc]/75 tracking-wide whitespace-nowrap">
+        <div className="hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-[#0d121b]/80 border border-[#ece7dc]/14 text-[11px] font-mono-num text-[#ece7dc]/75 tracking-wide whitespace-nowrap">
           {loc(t.pointerLockHint).replace('[F]', `[${patKey}]`)}
         </div>
       )}

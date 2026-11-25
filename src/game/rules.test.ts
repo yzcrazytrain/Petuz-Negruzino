@@ -7,12 +7,16 @@ import {
   computeBreathRecoveryHp,
   computeCharacterProgression,
   computeComboMultiplier,
+  computeCoopScaling,
   computeDifficultyScaledEnemyStats,
   computeEnemySteering,
   computeLoopScaling,
   computeRoosterGaitPose,
+  computeScaledChapterKillTarget,
   computeWeaponDamage,
   createInitialAmmo,
+  evaluateCutsceneSkipVote,
+  evaluateHubBoarding,
   findShotHitEnemy,
   keepRoosterOutOfLineOfFire,
   pickUpgradeChoices,
@@ -614,4 +618,369 @@ test('device detector distinguishes PC vs mobile touch and adapts vertical FOV t
   assert.ok(mobilePortrait.recommendedFov >= 80);
 });
 
+test('expanded 18-chapter 3-zone campaign has 3 act bosses, 33 objectives, and 18 MK-60 story tapes', async () => {
+  const { CHAPTERS } = await import('./constants');
+  const { TRANSLATIONS } = await import('./i18n');
+  const { buildZoneLayout } = await import('./zones');
 
+  assert.equal(CHAPTERS.length, 18);
+  assert.equal(CHAPTERS[5].hasBoss, true);
+  assert.equal(CHAPTERS[11].hasBoss, true);
+  assert.equal(CHAPTERS[17].hasBoss, true);
+  assert.equal(TRANSLATIONS.ru.chapterMeta.length, 18);
+  assert.equal(TRANSLATIONS.en.chapterMeta.length, 18);
+
+  const suburb = buildZoneLayout('suburb');
+  const depot = buildZoneLayout('depot');
+  const substation = buildZoneLayout('substation');
+
+  const allObjectives = [...suburb.objectives, ...depot.objectives, ...substation.objectives];
+  const allTapes = [...suburb.tapes, ...depot.tapes, ...substation.tapes];
+  assert.equal(allObjectives.length, 33);
+  assert.equal(allTapes.length, 18);
+
+  // Every non-boss chapter (1-5, 7-11, 13-17) has at least 2 objectives in its zone
+  for (const ch of CHAPTERS) {
+    if (!ch.hasBoss) {
+      const chObjs = allObjectives.filter((o) => o.chapter === ch.chapter);
+      assert.ok(chObjs.length >= 2, `chapter ${ch.chapter} should have at least 2 objectives`);
+    }
+  }
+
+  for (const layout of [suburb, depot, substation]) {
+    assert.equal(layout.tapes.length, 6);
+    for (const tape of layout.tapes) {
+      assert.ok(
+        tape.x >= layout.bounds.minX && tape.x <= layout.bounds.maxX,
+        `tape ${tape.id} x out of bounds`
+      );
+      assert.ok(
+        tape.z >= layout.bounds.minZ && tape.z <= layout.bounds.maxZ,
+        `tape ${tape.id} z out of bounds`
+      );
+      assert.ok(tape.id in TRANSLATIONS.ru.storyTapes, `RU copy missing for ${tape.id}`);
+      assert.ok(tape.id in TRANSLATIONS.en.storyTapes, `EN copy missing for ${tape.id}`);
+    }
+  }
+});
+
+test('LAN co-op protocol validates/sanitizes payloads, enforces 4-player cap, and migrates host cleanly', async () => {
+  const {
+    COOP_MAX_PLAYERS,
+    addPlayerToRoom,
+    createRoomRecord,
+    normalizeRoomCode,
+    parseClientMessage,
+    removePlayerFromRoom,
+    sanitizeCallsign,
+    serializeRoomSnapshot,
+  } = await import('./coopProtocol');
+  const { resolveCoopUrls } = await import('./coopClient');
+
+  assert.equal(sanitizeCallsign('<script>alert(1)</script> Саша'), 'scriptalert1script');
+  assert.equal(sanitizeCallsign('   ', 'Игрок'), 'Игрок');
+  assert.equal(normalizeRoomCode(' ab-7k! '), 'AB7K');
+
+  // Valid player state clamps extreme coordinates & weapon IDs safely
+  const parsed = parseClientMessage(
+    JSON.stringify({
+      type: 'player:state',
+      state: {
+        x: 9999,
+        y: 1.7,
+        z: -9999,
+        yaw: 0,
+        pitch: 0,
+        weaponId: 'invalid_gun',
+        hp: 999,
+        maxHp: 100,
+        isFiring: false,
+        isMoving: true,
+        isDowned: false,
+        kills: 5,
+      },
+    })
+  );
+  assert.ok(parsed && parsed.type === 'player:state');
+  assert.equal(parsed.state.x, 160);
+  assert.equal(parsed.state.z, -160);
+  assert.equal(parsed.state.hp, 250);
+  assert.equal(parsed.state.weaponId, 'shotgun');
+
+  // Oversized or malformed payloads are rejected
+  assert.equal(parseClientMessage('{bad json'), null);
+  assert.equal(parseClientMessage('x'.repeat(20_000)), null);
+  assert.equal(parseClientMessage(JSON.stringify({ type: 'unknown:op' })), null);
+
+  // Room creation, 4-player cap, and host migration on disconnect
+  const room = createRoomRecord('7K4P', 'p1', 'Григорий', 'story', 'normal');
+  assert.equal(addPlayerToRoom(room, 'p2', 'Антон').ok, true);
+  assert.equal(addPlayerToRoom(room, 'p3', 'Марина').ok, true);
+  assert.equal(addPlayerToRoom(room, 'p4', 'Дима').ok, true);
+  assert.equal(room.players.size, COOP_MAX_PLAYERS);
+
+  const fifth = addPlayerToRoom(room, 'p5', 'Лишний');
+  assert.equal(fifth.ok, false);
+
+  // Host leaves -> migrates cleanly to p2
+  const emptyAfterHostLeft = removePlayerFromRoom(room, 'p1');
+  assert.equal(emptyAfterHostLeft, false);
+  assert.equal(room.hostId, 'p2');
+  assert.equal(serializeRoomSnapshot(room).players.find((p) => p.id === 'p2')?.isHost, true);
+
+  // Removing remaining players marks room empty for cleanup
+  assert.equal(removePlayerFromRoom(room, 'p2'), false);
+  assert.equal(removePlayerFromRoom(room, 'p3'), false);
+  assert.equal(removePlayerFromRoom(room, 'p4'), true);
+
+  // LAN host URL resolver supports bare IPv4s and custom ports
+  const lanResolved = resolveCoopUrls('192.168.1.42');
+  assert.equal(lanResolved.httpBase, 'http://192.168.1.42:3000');
+  assert.equal(lanResolved.wsUrl, 'ws://192.168.1.42:3000/ws/coop');
+
+  // Stage 1: Reload animation sync fields, ping/pong, and pickup sync messages
+  const reloadState = parseClientMessage(
+    JSON.stringify({
+      type: 'player:state',
+      state: {
+        x: 2,
+        y: 1.7,
+        z: 10,
+        yaw: 0.4,
+        pitch: -0.1,
+        weaponId: 'p90',
+        hp: 85,
+        maxHp: 100,
+        isFiring: false,
+        isMoving: false,
+        isReloading: true,
+        reloadProgress: 1.8,
+        isDowned: false,
+        kills: 3,
+      },
+    })
+  );
+  assert.ok(reloadState && reloadState.type === 'player:state');
+  assert.equal(reloadState.state.isReloading, true);
+  assert.equal(reloadState.state.reloadProgress, 1);
+
+  const pingParsed = parseClientMessage(JSON.stringify({ type: 'ping', ts: 12345 }));
+  assert.deepEqual(pingParsed, { type: 'ping', ts: 12345 });
+
+  const pickupsMsg = parseClientMessage(
+    JSON.stringify({
+      type: 'world:pickups',
+      pickups: [{ id: 'pk_12', kind: 'medkit', x: 3.5, z: -8.2 }],
+    })
+  );
+  assert.ok(pickupsMsg && pickupsMsg.type === 'world:pickups');
+  assert.equal(pickupsMsg.pickups.length, 1);
+  assert.equal(pickupsMsg.pickups[0].kind, 'medkit');
+
+  const takeMsg = parseClientMessage(JSON.stringify({ type: 'pickup:take', pickupId: 'pk_12' }));
+  assert.deepEqual(takeMsg, { type: 'pickup:take', pickupId: 'pk_12' });
+});
+
+test('mobile HUD layout enforces non-overlapping portrait/landscape defaults and clamps coordinates', async () => {
+  const {
+    clampHudControlPos,
+    getDefaultMobileHudLayout,
+    HUD_SCALE_MAX,
+    HUD_SCALE_MIN,
+  } = await import('./mobileHudLayout');
+  const { stripPcKeyHints } = await import('./i18n');
+
+  const defaults = getDefaultMobileHudLayout();
+  // On 390x844 portrait, Fire button (72px tall, center at yPct) must not overlap Weapons bar (32px tall)
+  const vh = 844;
+  const fireBottomPx = (defaults.portrait.fire.yPct / 100) * vh + 36 * defaults.portrait.fire.scale;
+  const weaponsTopPx = (defaults.portrait.weapons.yPct / 100) * vh - 16 * defaults.portrait.weapons.scale;
+  assert.ok(
+    fireBottomPx + 24 < weaponsTopPx,
+    `expected portrait fire bottom (${fireBottomPx.toFixed(1)}px) well above weapons bar (${weaponsTopPx.toFixed(1)}px)`
+  );
+
+  // Joystick must also sit well above weapons bar
+  const stickBottomPx =
+    (defaults.portrait.joystick.yPct / 100) * vh + 56 * defaults.portrait.joystick.scale;
+  assert.ok(
+    stickBottomPx + 12 < weaponsTopPx,
+    `expected portrait joystick bottom (${stickBottomPx.toFixed(1)}px) above weapons bar (${weaponsTopPx.toFixed(1)}px)`
+  );
+
+  // Clamping enforces safe viewport margins & scale bounds
+  const clamped = clampHudControlPos({ xPct: -40, yPct: 120, scale: 9 }, defaults.portrait.fire, 'fire');
+  assert.equal(clamped.xPct, 7);
+  assert.equal(clamped.yPct, 96);
+  assert.equal(clamped.scale, HUD_SCALE_MAX);
+
+  const clampedSmall = clampHudControlPos({ scale: 0.1 }, defaults.portrait.reload, 'reload');
+  assert.equal(clampedSmall.scale, HUD_SCALE_MIN);
+
+  // stripPcKeyHints removes bracketed PC key prompts cleanly for touch screens
+  assert.equal(
+    stripPcKeyHints('Включите фонарик [L] и щиток [E], смена трека (N).'),
+    'Включите фонарик и щиток, смена трека.'
+  );
+  assert.equal(stripPcKeyHints('Выберите 1 модуль [1–3]:'), 'Выберите 1 модуль:');
+});
+
+test('custom track validation rejects oversized or non-audio files and cleans filenames', async () => {
+  const {
+    cleanTrackDisplayName,
+    isSupportedAudioFile,
+    MAX_CUSTOM_TRACK_BYTES,
+  } = await import('./customTracks');
+
+  assert.equal(cleanTrackDisplayName('01_Bagrovy_Fantomas_-_Biker.mp3'), '01 Bagrovy Fantomas - Biker');
+  assert.equal(
+    isSupportedAudioFile({ name: 'song.mp3', type: 'audio/mpeg', size: 4_000_000 } as File),
+    true
+  );
+  assert.equal(
+    isSupportedAudioFile({ name: 'song.flac', type: '', size: 10_000_000 } as File),
+    true
+  );
+  assert.equal(
+    isSupportedAudioFile({ name: 'huge.wav', type: 'audio/wav', size: MAX_CUSTOM_TRACK_BYTES + 1 } as File),
+    false
+  );
+  assert.equal(
+    isSupportedAudioFile({ name: 'image.png', type: 'image/png', size: 1024 } as File),
+    false
+  );
+});
+
+test('Stage 2 dynamic co-op scaling scales smoothly across 1..4 players and reacts to chapter kill targets', () => {
+  const s1 = computeCoopScaling(1);
+  const s2 = computeCoopScaling(2);
+  const s3 = computeCoopScaling(3);
+  const s4 = computeCoopScaling(4);
+
+  assert.equal(s1.playerCount, 1);
+  assert.equal(s1.enemyHpMult, 1);
+  assert.equal(s1.enemyDamageMult, 1);
+  assert.equal(s1.maxActiveBonus, 0);
+  assert.equal(s1.pickupDropChanceBonus, 0);
+  assert.equal(s1.ammoRefillMult, 1);
+
+  assert.ok(s2.enemyHpMult > s1.enemyHpMult && s3.enemyHpMult > s2.enemyHpMult && s4.enemyHpMult > s3.enemyHpMult);
+  assert.equal(s4.enemyHpMult, 2.05);
+  assert.equal(s4.enemyDamageMult, 1.36);
+  assert.equal(s4.spawnRateMult, 1.75);
+  assert.equal(s4.maxActiveBonus, 6);
+  assert.equal(s4.pickupDropChanceBonus, 0.24);
+  assert.equal(s4.ammoRefillMult, 1.9);
+
+  // Clamps out-of-range player counts safely to 1..4
+  assert.equal(computeCoopScaling(0).playerCount, 1);
+  assert.equal(computeCoopScaling(99).playerCount, 4);
+
+  // Chapter kill target scales with player count
+  assert.equal(computeScaledChapterKillTarget(10, 1), 10);
+  assert.ok(computeScaledChapterKillTarget(10, 2) > 10);
+  assert.ok(computeScaledChapterKillTarget(10, 4) > computeScaledChapterKillTarget(10, 2));
+});
+
+test('Stage 2 Hub Moskvitch boarding and Cutscene Skip voting require unanimous quorum and recalculate on disconnect', () => {
+  // 1. Solo boarding launches immediately (1/1)
+  const soloBoard = evaluateHubBoarding(new Set(['p1']), ['p1']);
+  assert.equal(soloBoard.boardedCount, 1);
+  assert.equal(soloBoard.totalPlayers, 1);
+  assert.equal(soloBoard.allReady, true);
+
+  // 2. 2-player squad: 1/2 does NOT launch; 2/2 launches
+  const partialBoard = evaluateHubBoarding(new Set(['p1']), ['p1', 'p2']);
+  assert.equal(partialBoard.boardedCount, 1);
+  assert.equal(partialBoard.totalPlayers, 2);
+  assert.equal(partialBoard.allReady, false);
+
+  const fullBoard = evaluateHubBoarding(new Set(['p1', 'p2']), ['p1', 'p2']);
+  assert.equal(fullBoard.allReady, true);
+
+  // Stale IDs from disconnected players are ignored
+  const afterLeaveBoard = evaluateHubBoarding(new Set(['p1', 'p2']), ['p1']);
+  assert.equal(afterLeaveBoard.boardedCount, 1);
+  assert.equal(afterLeaveBoard.totalPlayers, 1);
+  assert.equal(afterLeaveBoard.allReady, true);
+
+  // 3. Cutscene skip voting: 1/3 cannot skip alone; unanimous 3/3 skips; disconnect drops quorum
+  const vote1 = evaluateCutsceneSkipVote(new Set(['p1']), ['p1', 'p2', 'p3']);
+  assert.equal(vote1.voteCount, 1);
+  assert.equal(vote1.totalPlayers, 3);
+  assert.equal(vote1.shouldSkip, false);
+
+  const voteAll = evaluateCutsceneSkipVote(new Set(['p1', 'p2', 'p3']), ['p1', 'p2', 'p3']);
+  assert.equal(voteAll.shouldSkip, true);
+
+  // If p3 disconnects while p1 and p2 already voted -> quorum becomes 2/2 -> skips!
+  const voteAfterDisconnect = evaluateCutsceneSkipVote(new Set(['p1', 'p2', 'p3']), ['p1', 'p2']);
+  assert.equal(voteAfterDisconnect.voteCount, 2);
+  assert.equal(voteAfterDisconnect.totalPlayers, 2);
+  assert.equal(voteAfterDisconnect.shouldSkip, true);
+});
+
+test('Stage 2 Hub, Bus Depot #4, and Substation Luch-94 layouts have clear spawns and Hub anchors/dummies', async () => {
+  const { buildZoneLayout } = await import('./zones');
+
+  for (const zoneId of ['hub', 'suburb', 'depot', 'substation'] as const) {
+    const layout = buildZoneLayout(zoneId);
+    assert.equal(layout.zoneId, zoneId);
+    const resolved = resolveCircleVsAABBs(
+      layout.spawn.x,
+      layout.spawn.z,
+      0.55,
+      layout.colliders,
+      layout.bounds
+    );
+    assert.equal(resolved.hitWall, false, `${zoneId} spawn intersects a collider`);
+    assert.equal(resolved.x, layout.spawn.x);
+    assert.equal(resolved.z, layout.spawn.z);
+  }
+
+  const hub = buildZoneLayout('hub');
+  assert.ok(hub.hubAnchors, 'Hub must expose interactive anchors');
+  assert.equal(hub.hubAnchors!.rangeDummies.length, 5, 'Hub must have 5 firing-range dummies');
+  for (const dummy of hub.hubAnchors!.rangeDummies) {
+    assert.ok(dummy.maxHp >= 120, `dummy ${dummy.id} should have solid HP pool`);
+    assert.ok(dummy.distanceLabel.endsWith('м'));
+  }
+});
+
+test('Stage 2 coopProtocol parses Hub and Cutscene Skip vote messages and cleans quorum sets on disconnect', async () => {
+  const {
+    addPlayerToRoom,
+    createRoomRecord,
+    parseClientMessage,
+    removePlayerFromRoom,
+    serializeRoomSnapshot,
+  } = await import('./coopProtocol');
+
+  assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'hub:enter' })), { type: 'hub:enter' });
+  assert.deepEqual(parseClientMessage(JSON.stringify({ type: 'hub:board', boarded: true })), {
+    type: 'hub:board',
+    boarded: true,
+  });
+  assert.deepEqual(
+    parseClientMessage(JSON.stringify({ type: 'cutscene:open', cutsceneId: 'act2_depot' })),
+    { type: 'cutscene:open', cutsceneId: 'act2_depot' }
+  );
+  assert.deepEqual(
+    parseClientMessage(JSON.stringify({ type: 'cutscene:vote_skip', cutsceneId: 'act2_depot', vote: true })),
+    { type: 'cutscene:vote_skip', cutsceneId: 'act2_depot', vote: true }
+  );
+
+  // Removing a player cleans their ID from boardedPlayers & cutsceneSkipVotes
+  const room = createRoomRecord('HUB2', 'p1', 'Саша', 'story', 'normal');
+  addPlayerToRoom(room, 'p2', 'Дима');
+  room.inHub = true;
+  room.boardedPlayers.add('p1');
+  room.boardedPlayers.add('p2');
+  room.cutsceneId = 'intro_1';
+  room.cutsceneSkipVotes.add('p2');
+
+  removePlayerFromRoom(room, 'p2');
+  const snap = serializeRoomSnapshot(room);
+  assert.deepEqual(snap.boardedPlayers, ['p1']);
+  assert.deepEqual(snap.cutsceneSkipVotes, []);
+});

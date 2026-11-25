@@ -98,7 +98,20 @@ with zipfile.ZipFile(out_zip, 'w', compression=zipfile.ZIP_DEFLATED, compresslev
         if os.path.exists(full):
             zf.write(full, arcname=f'NEGRUZINO-Desktop/{name}')
 `;
-execFileSync('python3', ['-c', pyScript, ELECTRON_DIR, zipPath], { stdio: 'inherit' });
+const zipScriptArgs = ['-c', pyScript, ELECTRON_DIR, zipPath];
+let zipped = false;
+for (const pyBin of process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']) {
+  try {
+    execFileSync(pyBin, zipScriptArgs, { stdio: 'inherit' });
+    zipped = true;
+    break;
+  } catch {
+    // try next Python binary name
+  }
+}
+if (!zipped) {
+  throw new Error('Python is required to package NEGRUZINO-Desktop-EXE-Project.zip');
+}
 
 // 6. Mirror downloads into dist/downloads so both Vite dev and production builds serve them
 const distDownloadsDir = path.join(DIST_DIR, 'downloads');

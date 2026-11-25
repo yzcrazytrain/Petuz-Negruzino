@@ -1,4 +1,4 @@
-import { Download, Infinity as InfinityIcon, Settings, Sliders, Volume2, VolumeX } from 'lucide-react';
+import { Download, Infinity as InfinityIcon, Settings, Sliders, Volume2, VolumeX, Wifi } from 'lucide-react';
 import { DIFFICULTY_ORDER } from '../game/constants';
 import { requestLandscapeMode } from '../game/device';
 import { localizeRoosterCopy, TRANSLATIONS } from '../game/i18n';
@@ -16,6 +16,7 @@ interface TitleScreenProps {
   onStartStory: () => void;
   onQuickPlay: () => void;
   onStartEndless: () => void;
+  onOpenCoop: () => void;
   onOpenWorkshop: () => void;
   onOpenSettings: () => void;
   onToggleMute: () => void;
@@ -32,6 +33,7 @@ export function TitleScreen({
   onStartStory,
   onQuickPlay,
   onStartEndless,
+  onOpenCoop,
   onOpenWorkshop,
   onOpenSettings,
   onToggleMute,
@@ -187,6 +189,19 @@ export function TitleScreen({
           >
             <InfinityIcon className="w-4 h-4" />
             <span>{t.endlessBtn}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="open-lan-coop-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenCoop();
+            }}
+            className="px-4 py-3 rounded border border-[#5fa88e]/55 bg-[#10201c]/90 text-[#9cecd0] font-display text-base sm:text-lg font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:border-[#e8963a] hover:text-[#e8963a] transition-colors cursor-pointer"
+          >
+            <Wifi className="w-4 h-4" />
+            <span>{t.lanCoopBtn}</span>
           </button>
 
           <button

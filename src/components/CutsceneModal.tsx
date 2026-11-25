@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
 import { ChevronRight, SkipForward } from 'lucide-react';
-import { localizeRoosterCopy, TRANSLATIONS } from '../game/i18n';
-import type { CutsceneDef, Language, RoosterNameId } from '../game/types';
+import { localizeRoosterCopy, stripPcKeyHints, TRANSLATIONS } from '../game/i18n';
+import type {
+  CutsceneDef,
+  CutsceneVoteSnapshot,
+  Language,
+  RoosterNameId,
+} from '../game/types';
 
 interface CutsceneModalProps {
   language: Language;
   roosterName: RoosterNameId;
   cutscene: CutsceneDef;
   beatIndex: number;
+  isTouchDevice?: boolean;
+  cutsceneVote?: CutsceneVoteSnapshot;
   onAdvance: () => void;
   onSkip: () => void;
 }
@@ -17,13 +24,17 @@ export function CutsceneModal({
   roosterName,
   cutscene,
   beatIndex,
+  isTouchDevice = false,
+  cutsceneVote,
   onAdvance,
   onSkip,
 }: CutsceneModalProps) {
+  const isCoopVote = Boolean(cutsceneVote?.active && cutsceneVote.totalPlayers > 1);
   const t = TRANSLATIONS[language];
   const loc = (text: string) => localizeRoosterCopy(text, language, roosterName);
   const beat = cutscene.beats[beatIndex] ?? cutscene.beats[0];
-  const beatText = loc(beat.text);
+  const rawBeatText = loc(beat.text);
+  const beatText = isTouchDevice ? stripPcKeyHints(rawBeatText) : rawBeatText;
   const beatSpeaker = loc(beat.speaker);
   const cutsceneTitle = loc(cutscene.title);
   const cutsceneSubtitle = loc(cutscene.subtitle);
@@ -65,17 +76,38 @@ export function CutsceneModal({
           <span aria-hidden="true">·</span>
           <span className="truncate">{cutsceneSubtitle}</span>
         </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.currentTarget.blur();
-            onSkip();
-          }}
-          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-mono-num uppercase tracking-wider text-[#9aa3b0] hover:text-[#ece7dc] transition-colors cursor-pointer"
-        >
-          <span>{t.skipCutscene}</span>
-          <SkipForward className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          {isCoopVote && cutsceneVote && (
+            <span
+              data-testid="cutscene-skip-counter"
+              className="px-2.5 py-1 rounded bg-[#14222c] border border-[#5fa88e]/60 font-mono-num text-[11px] font-bold text-[#9cecd0] uppercase tracking-wider whitespace-nowrap"
+            >
+              {t.cutsceneVote.counter(cutsceneVote.voteCount, cutsceneVote.totalPlayers)}
+            </span>
+          )}
+          <button
+            type="button"
+            data-testid="cutscene-skip-btn"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onSkip();
+            }}
+            className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-mono-num uppercase tracking-wider transition-colors cursor-pointer ${
+              isCoopVote && cutsceneVote?.localVoted
+                ? 'text-[#5fa88e] font-bold'
+                : 'text-[#9aa3b0] hover:text-[#ece7dc]'
+            }`}
+          >
+            <span>
+              {isCoopVote
+                ? cutsceneVote?.localVoted
+                  ? t.cutsceneVote.votedBtn
+                  : t.cutsceneVote.voteBtn
+                : t.skipCutscene}
+            </span>
+            <SkipForward className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Transparent Live 3D In-Engine Machinima Stage (zero static AI art!) */}
@@ -132,9 +164,16 @@ export function CutsceneModal({
             <p className="text-base md:text-lg text-[#ece7dc] leading-relaxed min-h-[3.5rem]">
               {shownText}
             </p>
-            <div className="text-[11px] font-mono-num text-[#9aa3b0]/75 tracking-wide">
-              {t.cutsceneKeyHint}
-            </div>
+            {isCoopVote && (
+              <div className="text-[11px] font-mono-num text-[#7fe0bd] tracking-wide">
+                {t.cutsceneVote.waitingHint}
+              </div>
+            )}
+            {!isTouchDevice && !isCoopVote && (
+              <div className="text-[11px] font-mono-num text-[#9aa3b0]/75 tracking-wide">
+                {t.cutsceneKeyHint}
+              </div>
+            )}
           </div>
 
           <button
@@ -150,7 +189,15 @@ export function CutsceneModal({
             }}
             className="shrink-0 inline-flex items-center gap-2 px-6 py-3 rounded bg-[#e8963a] text-[#0b0f17] font-display text-lg font-bold tracking-wider uppercase hover:bg-[#f2a853] transition-colors cursor-pointer"
           >
-            <span>{isLastBeat ? t.enterNegruzino : t.continueBtn}</span>
+            <span>
+              {isLastBeat
+                ? isCoopVote
+                  ? cutsceneVote?.localVoted
+                    ? t.cutsceneVote.votedBtn
+                    : t.cutsceneVote.voteBtn
+                  : t.enterNegruzino
+                : t.continueBtn}
+            </span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

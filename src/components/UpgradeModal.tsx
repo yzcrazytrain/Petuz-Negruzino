@@ -1,4 +1,4 @@
-import { localizeRoosterCopy, TRANSLATIONS } from '../game/i18n';
+import { localizeRoosterCopy, stripPcKeyHints, TRANSLATIONS } from '../game/i18n';
 import type { Language, RoosterNameId, UpgradeId } from '../game/types';
 
 interface UpgradeModalProps {
@@ -7,6 +7,7 @@ interface UpgradeModalProps {
   loopNumber: number;
   choices: UpgradeId[];
   ownedCount: number;
+  isTouchDevice?: boolean;
   onSelect: (id: UpgradeId) => void;
 }
 
@@ -16,10 +17,14 @@ export function UpgradeModal({
   loopNumber,
   choices,
   ownedCount,
+  isTouchDevice = false,
   onSelect,
 }: UpgradeModalProps) {
   const t = TRANSLATIONS[language];
-  const loc = (text: string) => localizeRoosterCopy(text, language, roosterName);
+  const loc = (text: string) => {
+    const localized = localizeRoosterCopy(text, language, roosterName);
+    return isTouchDevice ? stripPcKeyHints(localized) : localized;
+  };
 
   return (
     <div
@@ -42,11 +47,15 @@ export function UpgradeModal({
         <div className="p-4 md:p-6 bg-[#0e141f] text-[#ece7dc] space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#ece7dc]/14 pb-3">
             <p className="text-sm text-[#ece7dc]/90">
-              {t.upgradeModalSubtitle(loopNumber)}
+              {isTouchDevice
+                ? stripPcKeyHints(t.upgradeModalSubtitle(loopNumber))
+                : t.upgradeModalSubtitle(loopNumber)}
             </p>
-            <span className="font-mono-num text-[11px] text-[#e8963a] uppercase tracking-wider">
-              {t.upgradeKeyHint}
-            </span>
+            {!isTouchDevice && (
+              <span className="font-mono-num text-[11px] text-[#e8963a] uppercase tracking-wider">
+                {t.upgradeKeyHint}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
@@ -62,9 +71,11 @@ export function UpgradeModal({
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="px-2 py-0.5 rounded bg-[#e8963a] text-[#0b0f17] font-mono-num text-xs font-bold">
-                        [{idx + 1}]
-                      </span>
+                      {!isTouchDevice && (
+                        <span className="px-2 py-0.5 rounded bg-[#e8963a] text-[#0b0f17] font-mono-num text-xs font-bold">
+                          [{idx + 1}]
+                        </span>
+                      )}
                       <span className="font-mono-num text-[10px] uppercase tracking-wider text-[#5fa88e] border border-[#5fa88e]/40 px-1.5 py-0.5 rounded">
                         {info.tag}
                       </span>

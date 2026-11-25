@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EnemyKind, HouseLot, LampSpec, PickupKind, WeaponId } from './types';
 import {
   createEnemySurfaceMaps,
+  createFirstPersonHandMaterials,
   createP90MagTextures,
   createPickupMaterials,
   createRoosterSurfaceMaps,
@@ -13,6 +14,12 @@ let cachedWeaponMaps: ReturnType<typeof createWeaponSurfaceMaps> | null = null;
 function getWeaponMaps() {
   if (!cachedWeaponMaps) cachedWeaponMaps = createWeaponSurfaceMaps();
   return cachedWeaponMaps;
+}
+
+let cachedHandMats: ReturnType<typeof createFirstPersonHandMaterials> | null = null;
+function getHandMaterials() {
+  if (!cachedHandMats) cachedHandMats = createFirstPersonHandMaterials(8);
+  return cachedHandMats;
 }
 
 let cachedP90Mag: ReturnType<typeof createP90MagTextures> | null = null;
@@ -40,15 +47,58 @@ function getRoosterMaps() {
 }
 
 /**
- * Centered beveled rounded-rectangle extrusion so cabinets, weapon receivers,
- * crates, and props read as machined objects instead of razor-sharp primitive cubes.
+ * Triplanar box-projected UV mapper for ExtrudeGeometry and LatheGeometry so
+ * metallic grain, walnut wood, and car enamel never stretch diagonally on side bevels.
+ */
+function normalizeBoxProjectedUVs(
+  geo: THREE.BufferGeometry,
+  tileMeters = 0.45
+): THREE.BufferGeometry {
+  const pos = geo.attributes.position;
+  const norm = geo.attributes.normal;
+  if (!pos || !norm) return geo;
+
+  const uvArr = new Float32Array(pos.count * 2);
+  const inv = 1 / Math.max(0.02, tileMeters);
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const py = pos.getY(i);
+    const pz = pos.getZ(i);
+    const nx = Math.abs(norm.getX(i));
+    const ny = Math.abs(norm.getY(i));
+    const nz = Math.abs(norm.getZ(i));
+
+    let u = 0;
+    let v = 0;
+    if (nx >= ny && nx >= nz) {
+      u = pz * inv;
+      v = py * inv;
+    } else if (ny >= nx && ny >= nz) {
+      u = px * inv;
+      v = pz * inv;
+    } else {
+      u = px * inv;
+      v = py * inv;
+    }
+    uvArr[i * 2] = u;
+    uvArr[i * 2 + 1] = v;
+  }
+  const uvAttr = new THREE.BufferAttribute(uvArr, 2);
+  geo.setAttribute('uv', uvAttr);
+  geo.setAttribute('uv2', uvAttr.clone());
+  return geo;
+}
+
+/**
+ * Centered beveled rounded-rectangle extrusion with distortion-free triplanar UVs.
  */
 function createBeveledBoxGeo(
   width: number,
   height: number,
   depth: number,
   radius = Math.min(width, height) * 0.14,
-  bevelSize = Math.min(width, height, depth) * 0.08
+  bevelSize = Math.min(width, height, depth) * 0.08,
+  uvTile = Math.max(0.18, Math.max(width, height, depth) * 0.85)
 ): THREE.BufferGeometry {
   const r = Math.min(radius, width * 0.42, height * 0.42);
   const b = Math.min(bevelSize, depth * 0.28, r * 0.85);
@@ -81,10 +131,7 @@ function createBeveledBoxGeo(
   });
   geo.translate(0, 0, -coreDepth * 0.5);
   geo.computeVertexNormals();
-  if (geo.attributes.uv) {
-    geo.setAttribute('uv2', geo.attributes.uv.clone());
-  }
-  return geo;
+  return normalizeBoxProjectedUVs(geo, uvTile);
 }
 
 /**
@@ -105,13 +152,14 @@ function createLatheProfileGeo(
 }
 
 /**
- * Extrudes a 2D side silhouette (XY plane) centered along X with smooth chamfers.
- * Used for ergonomic firearm stocks, bullpup P90 frame, and the Moskvitch-412 car body.
+ * Extrudes a 2D side silhouette (XY plane) centered along X with smooth chamfers
+ * and distortion-free triplanar UVs.
  */
 function createProfileExtrudeGeo(
   pts: Array<[number, number]>,
   thickness: number,
-  bevel = 0.008
+  bevel = 0.008,
+  uvTile = 0.48
 ): THREE.BufferGeometry {
   const shape = new THREE.Shape();
   pts.forEach(([x, y], idx) => {
@@ -130,10 +178,7 @@ function createProfileExtrudeGeo(
   });
   geo.translate(0, 0, -core * 0.5);
   geo.computeVertexNormals();
-  if (geo.attributes.uv) {
-    geo.setAttribute('uv2', geo.attributes.uv.clone());
-  }
-  return geo;
+  return normalizeBoxProjectedUVs(geo, uvTile);
 }
 
 function createSculptedBoot(
@@ -337,6 +382,10 @@ export interface WeaponRig {
   pumpForend?: THREE.Mesh;
   slide?: THREE.Mesh;
   boltHandle?: THREE.Group;
+  magazine?: THREE.Object3D;
+  ammoDrum?: THREE.Object3D;
+  chargingHandle?: THREE.Object3D;
+  leftHand?: THREE.Object3D;
 }
 
 export interface EnemyRig {
@@ -709,6 +758,24 @@ export function createSuburbanHouse(
       materials.woodTrim
     );
     mullionH.position.set(0, 0.14, 0.07);
+
+    // Traditional Russian carved wooden shutters (ставни) slightly ajar with iron hinges
+    const shutterGeo = createBeveledBoxGeo(0.46, 1.24, 0.06, 0.02, 0.01, 1.0);
+    for (const side of [-1, 1]) {
+      const shutter = new THREE.Mesh(shutterGeo, materials.woodTrim);
+      shutter.position.set(side * 0.94, 0.0, 0.12);
+      shutter.rotation.y = side * -0.26;
+      shutter.castShadow = true;
+      shutter.receiveShadow = true;
+      const hinge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.04, 0.08),
+        materials.grimeMetal
+      );
+      hinge.position.set(-side * 0.2, 0.36, 0.02);
+      shutter.add(hinge);
+      winGroup.add(shutter);
+    }
+
     winGroup.add(frame, pediment, sill, pane, mullionV, mullionH);
     group.add(winGroup);
   };
@@ -716,6 +783,88 @@ export function createSuburbanHouse(
   addWindow(1.45, 0.56 + 1.65, d / 2 + 0.04, 0);
   addWindow(-w / 2 - 0.04, 0.56 + 1.65, 0.6, -Math.PI / 2);
   addWindow(w / 2 + 0.04, 0.56 + 1.65, 0.6, Math.PI / 2);
+
+  // 6b. Porch 3-riser steps + wooden handrail & balusters + foundation basement air vents
+  for (let s = 0; s < 3; s++) {
+    const step = new THREE.Mesh(
+      createBeveledBoxGeo(2.2, 0.14, 0.34, 0.015, 0.008, 1.4),
+      materials.concrete
+    );
+    step.position.set(-0.9, 0.07 + s * 0.14, d / 2 + 1.84 - s * 0.28);
+    step.castShadow = true;
+    step.receiveShadow = true;
+    group.add(step);
+  }
+  const railBar = new THREE.Mesh(
+    createBeveledBoxGeo(0.08, 0.07, 1.32, 0.01, 0.008, 1.0),
+    materials.woodTrim
+  );
+  railBar.position.set(0.22, 1.24, d / 2 + 0.66);
+  group.add(railBar);
+  for (let b = 0; b < 4; b++) {
+    const bal = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.028, 0.78, 6),
+      materials.woodTrim
+    );
+    bal.position.set(0.22, 0.85, d / 2 + 0.2 + b * 0.3);
+    group.add(bal);
+  }
+
+  // Carved gable bargeboard trim beams framing the front pitched roof overhang
+  const bargeGeo = createBeveledBoxGeo(slopeLen + 0.1, 0.19, 0.08, 0.02, 0.01, 1.6);
+  const bargeL = new THREE.Mesh(bargeGeo, materials.woodTrim);
+  bargeL.position.set(-(w / 4 + overhang * 0.22), 0.56 + h + roofH / 2 - 0.15, d / 2 + overhang * 0.9);
+  bargeL.rotation.z = slopeAngle;
+  const bargeR = new THREE.Mesh(bargeGeo, materials.woodTrim);
+  bargeR.position.set(w / 4 + overhang * 0.22, 0.56 + h + roofH / 2 - 0.15, d / 2 + overhang * 0.9);
+  bargeR.rotation.z = -slopeAngle;
+  group.add(bargeL, bargeR);
+
+  // Foundation crawlspace steel air vents + exterior Soviet electrical meter box & conduit
+  for (const vx of [-w * 0.34, w * 0.32]) {
+    const vent = new THREE.Mesh(
+      createBeveledBoxGeo(0.34, 0.18, 0.06, 0.02, 0.008, 0.6),
+      materials.grimeMetal
+    );
+    vent.position.set(vx, 0.28, d / 2 + 0.19);
+    group.add(vent);
+  }
+  const meterBox = new THREE.Mesh(
+    createBeveledBoxGeo(0.36, 0.48, 0.16, 0.03, 0.012, 0.6),
+    materials.grimeMetal
+  );
+  meterBox.position.set(w / 2 - 0.52, 0.56 + 1.38, d / 2 + 0.08);
+  const meterPipe = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.024, 0.024, h - 0.8, 6),
+    materials.grimeMetal
+  );
+  meterPipe.position.set(w / 2 - 0.52, 0.56 + 1.38 + (h - 0.8) / 2, d / 2 + 0.06);
+  group.add(meterBox, meterPipe);
+
+  // Rooftop 1994 Soviet Yagi TV antenna on even-numbered houses for rich skyline silhouette
+  if (houseNum % 2 === 0) {
+    const mast = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.032, 2.35, 6),
+      materials.grimeMetal
+    );
+    mast.position.set(-w * 0.18, 0.56 + h + roofH + 1.05, d * 0.12);
+    const boom = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.016, 0.016, 1.55, 6),
+      materials.grimeMetal
+    );
+    boom.rotation.z = Math.PI / 2;
+    boom.position.set(-w * 0.18, 0.56 + h + roofH + 2.05, d * 0.12);
+    group.add(mast, boom);
+    for (let el = -2; el <= 2; el++) {
+      const dip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.01, 0.01, 1.05 - Math.abs(el) * 0.14, 5),
+        materials.grimeMetal
+      );
+      dip.rotation.x = Math.PI / 2;
+      dip.position.set(-w * 0.18 + el * 0.3, 0.56 + h + roofH + 2.05, d * 0.12);
+      group.add(dip);
+    }
+  }
 
   // 7. Soviet blue-enamel house number plate beside front door
   const signCanvas = document.createElement('canvas');
@@ -903,11 +1052,30 @@ export function createStreetlamp(
   group.add(pole);
 
   const hatch = new THREE.Mesh(
-    applyWorldBoxUVs(new THREE.BoxGeometry(0.16, 0.42, 0.08), 0.16, 0.42, 0.08, 0.8, 0.8),
+    createBeveledBoxGeo(0.18, 0.44, 0.09, 0.02, 0.008, 0.6),
     materials.grimeMetal
   );
   hatch.position.set(dir * 0.15, 1.45, 0);
   group.add(hatch);
+
+  // Weathered 1994 paper missing-person / utility flyer wrapped on the lower pole + steel climbing rungs
+  const flyer = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.176, 0.18, 0.32, 12, 1, true, -0.9, 1.8),
+    new THREE.MeshStandardMaterial({ color: 0xc8c0ae, roughness: 0.86, metalness: 0.02 })
+  );
+  flyer.position.y = 1.95;
+  flyer.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+  group.add(flyer);
+
+  for (let r = 0; r < 5; r++) {
+    const rung = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.18, 6),
+      materials.grimeMetal
+    );
+    rung.rotation.z = Math.PI / 2;
+    rung.position.set((r % 2 === 0 ? 1 : -1) * 0.14, 2.7 + r * 0.68, 0.04);
+    group.add(rung);
+  }
 
   // 3. Porcelain power-line insulator crossarm near top of pole
   const crossArm = new THREE.Mesh(
@@ -918,10 +1086,19 @@ export function createStreetlamp(
   group.add(crossArm);
   for (const iz of [-0.28, 0.28]) {
     const insulator = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.042, 0.052, 0.12, 8),
+      createLatheProfileGeo(
+        [
+          [0.036, 0],
+          [0.056, 0.035],
+          [0.035, 0.07],
+          [0.052, 0.105],
+          [0.022, 0.135],
+        ],
+        10
+      ),
       materials.frostedGlass
     );
-    insulator.position.set(0, 6.64, iz);
+    insulator.position.set(0, 6.59, iz);
     group.add(insulator);
   }
 
@@ -979,9 +1156,9 @@ export function createStreetlamp(
     normalMap: materials.frostedGlass.normalMap,
     normalScale: new THREE.Vector2(0.7, 0.7),
     emissive: 0xea983d,
-    emissiveIntensity: 3.4,
-    roughness: 0.22,
-    metalness: 0.08,
+    emissiveIntensity: 2.0,
+    roughness: 0.28,
+    metalness: 0.06,
   });
   const bulb = new THREE.Mesh(
     new THREE.SphereGeometry(0.21, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55),
@@ -995,7 +1172,7 @@ export function createStreetlamp(
   const coneMat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: new THREE.Color(0xffb45c) },
-      uOpacity: { value: 0.21 },
+      uOpacity: { value: 0.12 },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -1027,7 +1204,7 @@ export function createStreetlamp(
     blending: THREE.AdditiveBlending,
     side: THREE.FrontSide,
   });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(4.2, 7.2, 24, 1, true), coneMat);
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(4.4, 7.2, 24, 1, true), coneMat);
   cone.position.set(dir * 2.02, 3.66, 0);
   group.add(cone);
 
@@ -1037,17 +1214,17 @@ export function createStreetlamp(
   poolCanvas.height = 128;
   const pctx = poolCanvas.getContext('2d')!;
   const pgrad = pctx.createRadialGradient(64, 64, 4, 64, 64, 62);
-  pgrad.addColorStop(0, 'rgba(255, 184, 96, 0.30)');
-  pgrad.addColorStop(0.45, 'rgba(232, 146, 56, 0.12)');
+  pgrad.addColorStop(0, 'rgba(255, 184, 96, 0.34)');
+  pgrad.addColorStop(0.45, 'rgba(232, 146, 56, 0.14)');
   pgrad.addColorStop(1, 'rgba(232, 146, 56, 0)');
   pctx.fillStyle = pgrad;
   pctx.fillRect(0, 0, 128, 128);
   const poolMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(9.0, 9.0),
+    new THREE.PlaneGeometry(9.6, 9.6),
     new THREE.MeshBasicMaterial({
       map: new THREE.CanvasTexture(poolCanvas),
       transparent: true,
-      opacity: 0.84,
+      opacity: 0.46,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     })
@@ -1058,7 +1235,7 @@ export function createStreetlamp(
 
   let pointLight: THREE.PointLight | undefined;
   if (spec.hasPointLight) {
-    pointLight = new THREE.PointLight(0xf29f46, 26, 22, 1.65);
+    pointLight = new THREE.PointLight(0xf29f46, 15, 22, 1.85);
     pointLight.position.set(dir * 2.02, 6.75, 0);
     group.add(pointLight);
   }
@@ -1071,12 +1248,12 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
   group.position.set(-11.2, 0, 0);
 
   const warningMat = new THREE.MeshStandardMaterial({
-    color: 0xe8963a,
+    color: 0xff5a42,
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
-    emissive: 0xc93b3b,
-    emissiveIntensity: 2.5,
-    roughness: 0.28,
+    emissive: 0xe62b2b,
+    emissiveIntensity: 3.4,
+    roughness: 0.22,
   });
 
   // Base weathered concrete bunker cabin
@@ -1089,7 +1266,49 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
   bunker.receiveShadow = true;
   group.add(bunker);
 
-  // Rusted steel roof cap
+  // Heavy riveted steel substation access door facing street (+X) + louvers + Soviet warning sign
+  const steelDoor = new THREE.Mesh(
+    createBeveledBoxGeo(0.12, 2.15, 1.15, 0.03, 0.015, 1.2),
+    materials.grimeMetal
+  );
+  steelDoor.position.set(1.32, 1.12, 0);
+  group.add(steelDoor);
+
+  const warnCanvas = document.createElement('canvas');
+  warnCanvas.width = 192;
+  warnCanvas.height = 192;
+  const wctx = warnCanvas.getContext('2d')!;
+  wctx.fillStyle = '#e5b82e';
+  wctx.fillRect(0, 0, 192, 192);
+  wctx.strokeStyle = '#14161a';
+  wctx.lineWidth = 14;
+  wctx.strokeRect(8, 8, 176, 176);
+  // High-voltage lightning bolt icon
+  wctx.fillStyle = '#c42424';
+  wctx.beginPath();
+  wctx.moveTo(106, 26);
+  wctx.lineTo(66, 98);
+  wctx.lineTo(96, 98);
+  wctx.lineTo(78, 152);
+  wctx.lineTo(130, 82);
+  wctx.lineTo(98, 82);
+  wctx.closePath();
+  wctx.fill();
+  wctx.fillStyle = '#111418';
+  wctx.font = 'bold 20px monospace';
+  wctx.textAlign = 'center';
+  wctx.fillText('НЕ ВЛЕЗАЙ', 96, 174);
+  const warnTex = new THREE.CanvasTexture(warnCanvas);
+  warnTex.colorSpace = THREE.SRGBColorSpace;
+  const warnSign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.56, 0.56),
+    new THREE.MeshStandardMaterial({ map: warnTex, roughness: 0.45, metalness: 0.2 })
+  );
+  warnSign.rotation.y = Math.PI / 2;
+  warnSign.position.set(1.39, 1.56, 0);
+  group.add(warnSign);
+
+  // Rusted steel roof cap + 3 ceramic high-voltage rooftop transformer bushings
   const cap = new THREE.Mesh(
     applyWorldBoxUVs(new THREE.BoxGeometry(2.9, 0.25, 3.1), 2.9, 0.25, 3.1, 2.0, 2.0),
     materials.grimeMetal
@@ -1099,7 +1318,27 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
   cap.receiveShadow = true;
   group.add(cap);
 
-  // Tall lattice mast rising 14m into midnight fog
+  for (const bz of [-0.72, 0, 0.72]) {
+    const bushing = new THREE.Mesh(
+      createLatheProfileGeo(
+        [
+          [0.09, 0],
+          [0.12, 0.1],
+          [0.075, 0.18],
+          [0.115, 0.26],
+          [0.07, 0.34],
+          [0.105, 0.42],
+          [0.04, 0.52],
+        ],
+        10
+      ),
+      materials.frostedGlass
+    );
+    bushing.position.set(0.75, 3.42, bz);
+    group.add(bushing);
+  }
+
+  // Tall lattice mast rising 14m into midnight fog with steel X-bracing
   const legGeo = new THREE.CylinderGeometry(0.08, 0.14, 11.5, 6);
   const offsets: [number, number][] = [
     [-0.65, -0.65],
@@ -1116,6 +1355,26 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
     group.add(leg);
   }
 
+  // Horizontal & diagonal steel cross-struts up the pylon
+  for (let tier = 0; tier < 5; tier++) {
+    const ty = 4.6 + tier * 2.15;
+    const span = Math.max(0.75, 1.35 - tier * 0.12);
+    const strutX = new THREE.Mesh(
+      new THREE.BoxGeometry(span, 0.07, 0.07),
+      materials.grimeMetal
+    );
+    strutX.position.set(0, ty, span * 0.45);
+    const strutX2 = strutX.clone();
+    strutX2.position.z = -span * 0.45;
+    const diag = new THREE.Mesh(
+      new THREE.BoxGeometry(span * 1.28, 0.055, 0.055),
+      materials.grimeMetal
+    );
+    diag.position.set(0, ty + 1.0, span * 0.42);
+    diag.rotation.z = tier % 2 === 0 ? 0.85 : -0.85;
+    group.add(strutX, strutX2, diag);
+  }
+
   for (const y of [8.2, 11.4, 13.8]) {
     const bar = new THREE.Mesh(
       new THREE.BoxGeometry(3.4, 0.14, 0.14),
@@ -1124,6 +1383,15 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
     bar.position.y = y;
     bar.castShadow = true;
     group.add(bar);
+    // Hanging ceramic insulator chains at crossarm tips
+    for (const side of [-1.55, 1.55]) {
+      const chain = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.07, 0.42, 8),
+        materials.frostedGlass
+      );
+      chain.position.set(side, y - 0.25, 0);
+      group.add(chain);
+    }
   }
 
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), warningMat);
@@ -1515,62 +1783,81 @@ export function createRoosterModel(shadowTex: THREE.CanvasTexture): RoosterRig {
 
   const rMaps = getRoosterMaps();
 
-  const chestMat = new THREE.MeshStandardMaterial({
+  const chestMat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     normalScale: new THREE.Vector2(1.45, 1.45),
     roughness: 1.0,
     metalness: 0.14,
+    sheen: 0.85,
+    sheenColor: new THREE.Color(0xffb86b),
+    sheenRoughness: 0.52,
   });
   rMaps.feathers.attach(chestMat, true);
 
-  const wingMat = new THREE.MeshStandardMaterial({
+  const wingMat = new THREE.MeshPhysicalMaterial({
     color: 0xdca580,
     normalScale: new THREE.Vector2(1.5, 1.5),
     roughness: 1.0,
-    metalness: 0.18,
+    metalness: 0.2,
+    iridescence: 0.35,
+    iridescenceIOR: 1.35,
+    sheen: 0.75,
   });
   rMaps.feathers.attach(wingMat, true);
 
-  const neckMat = new THREE.MeshStandardMaterial({
+  const neckMat = new THREE.MeshPhysicalMaterial({
     color: 0xffd199,
     normalScale: new THREE.Vector2(1.3, 1.3),
     roughness: 1.0,
-    metalness: 0.16,
+    metalness: 0.18,
+    sheen: 0.9,
+    sheenColor: new THREE.Color(0xffe1a8),
+    sheenRoughness: 0.42,
   });
   rMaps.feathers.attach(neckMat, true);
 
-  const tailMat = new THREE.MeshStandardMaterial({
-    color: 0x3b7c6e,
+  const tailMat = new THREE.MeshPhysicalMaterial({
+    color: 0x2d786a,
     normalScale: new THREE.Vector2(1.5, 1.5),
-    roughness: 0.34,
-    metalness: 0.42,
+    roughness: 0.26,
+    metalness: 0.48,
+    iridescence: 0.85,
+    iridescenceIOR: 1.4,
+    clearcoat: 0.45,
+    clearcoatRoughness: 0.24,
   });
   rMaps.feathers.attach(tailMat, false);
 
-  const combMat = new THREE.MeshStandardMaterial({
+  const combMat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: rMaps.combMap,
     normalMap: rMaps.combNormal,
     normalScale: new THREE.Vector2(1.1, 1.1),
     emissive: 0x3a0707,
-    emissiveIntensity: 0.25,
-    roughness: 0.46,
+    emissiveIntensity: 0.28,
+    roughness: 0.38,
     metalness: 0.04,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.38,
   });
-  const beakMat = new THREE.MeshStandardMaterial({
+  const beakMat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: rMaps.keratinMap,
     normalMap: rMaps.keratinNormal,
     normalScale: new THREE.Vector2(1.0, 1.0),
-    roughness: 0.38,
-    metalness: 0.12,
+    roughness: 0.32,
+    metalness: 0.14,
+    clearcoat: 0.4,
   });
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: 0x0a0b0d,
-    normalMap: rMaps.keratinNormal,
-    roughness: 0.08,
-    metalness: 0.35,
+  const eyeMat = new THREE.MeshPhysicalMaterial({
+    color: 0x07080a,
+    roughness: 0.04,
+    metalness: 0.2,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
   });
+  const catchlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const earlobeMat = new THREE.MeshStandardMaterial({ color: 0xe6e0d4, roughness: 0.55 });
 
   // Smooth sculpted LatheGeometry avian keel & plump breast silhouette
   const torsoGeo = createLatheProfileGeo(
@@ -1654,12 +1941,15 @@ export function createRoosterModel(shadowTex: THREE.CanvasTexture): RoosterRig {
     headPivot.add(lobe);
   }
 
-  // Twin dangling crimson wattles & earlobes
+  // Twin dangling crimson wattles & realistic pale earlobes
   for (const ws of [-1, 1]) {
     const wattle = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.045, 4, 8), combMat);
     wattle.position.set(ws * 0.028, -0.082, 0.078);
     wattle.rotation.z = ws * 0.16;
-    headPivot.add(wattle);
+    const earlobe = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 8), earlobeMat);
+    earlobe.scale.set(0.45, 1.1, 0.9);
+    earlobe.position.set(ws * 0.088, -0.022, 0.018);
+    headPivot.add(wattle, earlobe);
   }
 
   // Curved two-part keratin beak (arched upper mandible + lower mandible)
@@ -1672,11 +1962,14 @@ export function createRoosterModel(shadowTex: THREE.CanvasTexture): RoosterRig {
   lowerBeak.position.set(0, -0.03, 0.128);
   headPivot.add(upperBeak, lowerBeak);
 
-  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 10), eyeMat);
-  leftEye.position.set(0.078, 0.022, 0.05);
-  const rightEye = leftEye.clone();
-  rightEye.position.x = -0.078;
-  headPivot.add(leftEye, rightEye);
+  for (const es of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.023, 12, 12), eyeMat);
+    eye.position.set(es * 0.078, 0.022, 0.05);
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(0.0065, 6, 6), catchlightMat);
+    glint.position.set(es * 0.012, 0.011, 0.015);
+    eye.add(glint);
+    headPivot.add(eye);
+  }
 
   // Layered organic folded feather wings (sculpted profile blades — zero flat boxes!)
   const makeWing = (side: 1 | -1): THREE.Group => {
@@ -1835,88 +2128,219 @@ export function createRoosterModel(shadowTex: THREE.CanvasTexture): RoosterRig {
 }
 
 /**
- * 5 Sculpted First-Person 3D Weapon Viewmodels with beveled ExtrudeGeometry frames,
- * contoured walnut/polymer stocks, curved trigger guards, machined muzzle brakes & optics.
+ * Sculpted AAA First-Person Tactical Gloved Hand & Weathered 1994 Soviet Parka Sleeve.
+ */
+function createGlovedHandRig(opts: {
+  side: 'left' | 'right';
+  palmPos: [number, number, number];
+  wristDir: [number, number, number];
+  gripStyle: 'forend' | 'pistol' | 'handle';
+}): THREE.Group {
+  const { leatherGlove, jacketSleeve, skinKnuckle } = getHandMaterials();
+  const hand = new THREE.Group();
+  hand.position.set(opts.palmPos[0], opts.palmPos[1], opts.palmPos[2]);
+  const s = opts.side === 'left' ? -1 : 1;
+
+  // Contoured matte leather glove palm cradling the weapon cleanly from below
+  const palm = new THREE.Mesh(
+    createBeveledBoxGeo(0.064, 0.042, 0.08, 0.016, 0.009, 0.24),
+    leatherGlove
+  );
+  hand.add(palm);
+
+  // Cleanly tucked dark leather gloved fingers curving around grip/forend (zero stray spikes)
+  for (let i = 0; i < 4; i++) {
+    const fz = -0.028 + i * 0.018;
+    const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.0095, 8, 8), skinKnuckle);
+    const seg = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, 0.026, 4, 8), leatherGlove);
+    if (opts.gripStyle === 'forend') {
+      knuckle.position.set(s * 0.026, 0.01, fz);
+      seg.position.set(s * 0.032, 0.026, fz);
+      seg.rotation.z = -s * 0.35;
+    } else if (opts.gripStyle === 'handle') {
+      knuckle.position.set(0, -0.012, fz);
+      seg.position.set(-s * 0.018, -0.02, fz);
+      seg.rotation.z = s * 1.1;
+    } else {
+      knuckle.position.set(-s * 0.026, -0.008, fz);
+      seg.position.set(-s * 0.034, -0.014, fz - 0.006);
+      seg.rotation.z = s * 1.25;
+    }
+    hand.add(knuckle, seg);
+  }
+
+  // Wrapped gloved thumb hugging side of stock/forend
+  const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.034, 5, 8), leatherGlove);
+  thumb.position.set(-s * 0.024, 0.018, -0.024);
+  thumb.rotation.set(0.55, -s * 0.2, s * 0.42);
+  hand.add(thumb);
+
+  // Dark leather wrist cuff & weathered Soviet storm-parka forearm sloping smoothly off-screen
+  const wristVec = new THREE.Vector3(opts.wristDir[0], opts.wristDir[1], opts.wristDir[2]);
+  const cuffEnd = wristVec.clone().multiplyScalar(0.22);
+  const wristCurve = new THREE.CatmullRomCurve3([
+    cuffEnd.clone().multiplyScalar(0.85),
+    wristVec.clone().multiplyScalar(0.45),
+    wristVec.clone().multiplyScalar(0.75),
+    wristVec.clone(),
+  ]);
+  const cuffStrap = new THREE.Mesh(
+    new THREE.TubeGeometry(
+      new THREE.CatmullRomCurve3([new THREE.Vector3(0, -0.006, 0.024), cuffEnd]),
+      6,
+      0.031,
+      10,
+      false
+    ),
+    leatherGlove
+  );
+  const sleeve = new THREE.Mesh(
+    new THREE.TubeGeometry(wristCurve, 12, 0.042, 12, false),
+    jacketSleeve
+  );
+  hand.add(cuffStrap, sleeve);
+
+  return hand;
+}
+
+/**
+ * 5 AAA Sculpted First-Person 3D Weapon Viewmodels with triplanar-mapped MeshPhysicalMaterial
+ * anisotropic blued steel, lacquered walnut, perforated barrel heatshields, side-saddle 12ga
+ * shells, glowing tritium sights, iridescent optics, and articulated leather-gloved hands!
  */
 export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   const group = new THREE.Group();
 
   const wMaps = getWeaponMaps();
-  const gunmetal = new THREE.MeshStandardMaterial({
+  const gunmetal = new THREE.MeshPhysicalMaterial({
     color: 0xd5dce6,
-    normalScale: new THREE.Vector2(1.25, 1.25),
-    roughness: 1.0,
-    metalness: 0.72,
+    normalScale: new THREE.Vector2(1.15, 1.15),
+    roughness: 0.92,
+    metalness: 0.84,
+    clearcoat: 0.26,
+    clearcoatRoughness: 0.34,
+    envMapIntensity: 1.65,
   });
   wMaps.metal.attach(gunmetal, true);
 
-  const darkSteel = new THREE.MeshStandardMaterial({
-    color: 0x8d95a2,
-    normalScale: new THREE.Vector2(1.1, 1.1),
-    roughness: 1.0,
-    metalness: 0.78,
+  const darkSteel = new THREE.MeshPhysicalMaterial({
+    color: 0x86909e,
+    normalScale: new THREE.Vector2(1.05, 1.05),
+    roughness: 0.9,
+    metalness: 0.88,
+    clearcoat: 0.22,
+    clearcoatRoughness: 0.38,
+    envMapIntensity: 1.55,
   });
   wMaps.metal.attach(darkSteel, true);
 
-  const walnut = new THREE.MeshStandardMaterial({
+  const walnut = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: wMaps.woodMap,
     normalMap: wMaps.woodNormal,
-    normalScale: new THREE.Vector2(1.3, 1.3),
-    roughness: 0.62,
-    metalness: 0.06,
+    normalScale: new THREE.Vector2(1.25, 1.25),
+    roughness: 0.52,
+    metalness: 0.05,
+    clearcoat: 0.56,
+    clearcoatRoughness: 0.26,
   });
 
-  const olivePolymer = new THREE.MeshStandardMaterial({
-    color: 0x577050,
+  const olivePolymer = new THREE.MeshPhysicalMaterial({
+    color: 0x526b4b,
     normalScale: new THREE.Vector2(0.75, 0.75),
     roughness: 0.58,
-    metalness: 0.16,
+    metalness: 0.14,
+    clearcoat: 0.18,
+    clearcoatRoughness: 0.5,
   });
   wMaps.metal.attach(olivePolymer, false);
 
-  const brushedChrome = new THREE.MeshStandardMaterial({
-    color: 0xe2e8f0,
-    normalScale: new THREE.Vector2(0.65, 0.65),
-    roughness: 0.22,
-    metalness: 0.9,
+  const brushedChrome = new THREE.MeshPhysicalMaterial({
+    color: 0xebf1f8,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughness: 0.18,
+    metalness: 0.96,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 2.1,
   });
   wMaps.metal.attach(brushedChrome, false);
 
-  const brassMat = new THREE.MeshStandardMaterial({
-    color: 0xd9a84e,
+  const brassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xb88c3e,
     roughness: 0.3,
-    metalness: 0.88,
+    metalness: 0.9,
+    clearcoat: 0.28,
+    envMapIntensity: 1.5,
   });
 
-  const opticGlass = new THREE.MeshStandardMaterial({
-    color: 0x2a6c7a,
-    emissive: 0x16424d,
-    emissiveIntensity: 0.8,
-    roughness: 0.08,
-    metalness: 0.25,
+  const shellRedMat = new THREE.MeshPhysicalMaterial({
+    color: 0x761519,
+    roughness: 0.42,
+    metalness: 0.06,
+    clearcoat: 0.42,
+    clearcoatRoughness: 0.32,
+  });
+
+  const opticGlass = new THREE.MeshPhysicalMaterial({
+    color: 0x051014,
+    emissive: 0x030c10,
+    emissiveIntensity: 0.28,
+    roughness: 0.05,
+    metalness: 0.42,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    iridescence: 0.88,
+    iridescenceIOR: 1.48,
+    envMapIntensity: 2.0,
   });
 
   const accentAmber = new THREE.MeshStandardMaterial({
-    color: 0xe8963a,
-    emissive: 0xe8963a,
-    emissiveIntensity: 1.6,
-    roughness: 0.25,
+    color: 0xffa63d,
+    emissive: 0xff9224,
+    emissiveIntensity: 2.4,
+    roughness: 0.2,
+  });
+
+  const tritiumGreen = new THREE.MeshStandardMaterial({
+    color: 0x52ff9a,
+    emissive: 0x26e678,
+    emissiveIntensity: 2.8,
+    roughness: 0.18,
   });
 
   const muzzlePoint = new THREE.Object3D();
 
   if (weaponId === 'shotgun') {
-    // Beveled machined steel receiver with curved top contour
+    // Beveled machined steel receiver with triplanar-mapped UVs (zero diagonal stretch!)
     const receiver = new THREE.Mesh(
-      createBeveledBoxGeo(0.078, 0.096, 0.33, 0.016, 0.009),
+      createBeveledBoxGeo(0.078, 0.096, 0.33, 0.016, 0.009, 0.38),
       gunmetal
     );
     receiver.position.set(0, 0.004, -0.05);
 
-    // Recessed ejection port + glint of red/brass 12g hull
+    // Side-saddle 4-shell 12-gauge holder mounted on left receiver wall (classic AAA visual anchor!)
+    const saddlePlate = new THREE.Mesh(
+      createBeveledBoxGeo(0.012, 0.058, 0.165, 0.004, 0.002, 0.2),
+      darkSteel
+    );
+    saddlePlate.position.set(-0.042, 0.004, -0.055);
+    group.add(saddlePlate);
+    for (let sh = 0; sh < 4; sh++) {
+      const sz = -0.115 + sh * 0.038;
+      const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.0098, 0.0098, 0.052, 10), shellRedMat);
+      hull.position.set(-0.052, 0.002, sz);
+      const brassBase = new THREE.Mesh(new THREE.CylinderGeometry(0.0102, 0.0102, 0.016, 10), brassMat);
+      brassBase.position.set(-0.052, 0.032, sz);
+      const clip = new THREE.Mesh(new THREE.TorusGeometry(0.0105, 0.0022, 6, 10), darkSteel);
+      clip.rotation.x = Math.PI / 2;
+      clip.position.set(-0.052, 0.002, sz);
+      group.add(hull, brassBase, clip);
+    }
+
+    // Recessed ejection port + machined chrome bolt carrier + brass hull glint
     const ejectPort = new THREE.Mesh(
-      createBeveledBoxGeo(0.012, 0.032, 0.092, 0.004, 0.002),
+      createBeveledBoxGeo(0.012, 0.032, 0.092, 0.004, 0.002, 0.16),
       brushedChrome
     );
     ejectPort.position.set(0.039, 0.016, -0.055);
@@ -1927,7 +2351,21 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     shellGlint.rotation.x = Math.PI / 2;
     shellGlint.position.set(0.035, 0.014, -0.055);
 
-    // Ergonomic sculpted walnut stock (2D side profile extruded along X with smooth bevel)
+    // Rear ghost-ring aperture iron sight with twin green tritium night dots!
+    const rearSightBase = new THREE.Mesh(
+      createBeveledBoxGeo(0.032, 0.014, 0.038, 0.004, 0.002, 0.12),
+      darkSteel
+    );
+    rearSightBase.position.set(0, 0.058, 0.065);
+    const ghostRing = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0028, 6, 14), darkSteel);
+    ghostRing.position.set(0, 0.072, 0.065);
+    for (const ts of [-0.012, 0.012]) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 6, 6), tritiumGreen);
+      dot.position.set(ts, 0.072, 0.07);
+      group.add(dot);
+    }
+
+    // Ergonomic sculpted walnut stock with crisp wood-grain UVs
     const stockGeo = createProfileExtrudeGeo(
       [
         [0.09, 0.035],
@@ -1939,15 +2377,15 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
         [0.08, -0.04],
       ],
       0.068,
-      0.012
+      0.012,
+      0.34
     );
     stockGeo.rotateY(-Math.PI / 2);
     const stock = new THREE.Mesh(stockGeo, walnut);
-    stock.position.set(0, 0.0, 0.0);
 
     // Rubber recoil buttpad
     const buttPad = new THREE.Mesh(
-      createBeveledBoxGeo(0.068, 0.102, 0.022, 0.012, 0.005),
+      createBeveledBoxGeo(0.068, 0.102, 0.022, 0.012, 0.005, 0.2),
       darkSteel
     );
     buttPad.position.set(0, -0.066, 0.355);
@@ -1968,15 +2406,21 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     trigger.position.set(0, -0.058, 0.028);
     trigger.rotation.x = 0.32;
 
-    // Crowned heavy 12ga barrel + ventilated top sighting rib with 5 support posts
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.024, 0.64, 14), darkSteel);
+    // Crowned heavy 12ga barrel + perforated steel heat-shield + ventilated top rib
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.024, 0.64, 16), darkSteel);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.032, -0.49);
+    const heatShield = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0255, 0.0265, 0.42, 16, 1, true, -Math.PI * 0.68, Math.PI * 1.36),
+      gunmetal
+    );
+    heatShield.rotation.x = Math.PI / 2;
+    heatShield.position.set(0, 0.034, -0.42);
     const muzzleCrown = new THREE.Mesh(new THREE.TorusGeometry(0.021, 0.004, 6, 14), brushedChrome);
     muzzleCrown.position.set(0, 0.032, -0.81);
 
     const topRib = new THREE.Mesh(
-      createBeveledBoxGeo(0.018, 0.009, 0.62, 0.003, 0.002),
+      createBeveledBoxGeo(0.018, 0.009, 0.62, 0.003, 0.002, 0.35),
       darkSteel
     );
     topRib.position.set(0, 0.062, -0.48);
@@ -1994,12 +2438,12 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     magCap.rotation.x = Math.PI / 2;
     magCap.position.set(0, -0.012, -0.735);
     const barrelClamp = new THREE.Mesh(
-      createBeveledBoxGeo(0.048, 0.068, 0.028, 0.01, 0.004),
+      createBeveledBoxGeo(0.048, 0.068, 0.028, 0.01, 0.004, 0.18),
       darkSteel
     );
     barrelClamp.position.set(0, 0.01, -0.68);
 
-    // Contoured ribbed walnut pump forend (LatheGeometry ribbed grip!)
+    // Contoured ribbed walnut pump forend + articulated left gloved hand attached directly to pump!
     const pumpGeo = createLatheProfileGeo(
       [
         [0.026, -0.115],
@@ -2012,12 +2456,29 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
         [0.036, 0.1],
         [0.026, 0.115],
       ],
-      14
+      16
     );
     pumpGeo.rotateX(Math.PI / 2);
     const pumpForend = new THREE.Mesh(pumpGeo, walnut);
     pumpForend.scale.set(1.0, 0.92, 1.0);
     pumpForend.position.set(0, -0.016, -0.4);
+
+    // Left gloved support hand moves with the pump forend when racking a shell!
+    const leftHand = createGlovedHandRig({
+      side: 'left',
+      palmPos: [-0.012, -0.046, 0.008],
+      wristDir: [-0.28, -0.24, 0.36],
+      gripStyle: 'forend',
+    });
+    pumpForend.add(leftHand);
+
+    // Right gloved trigger hand tucked cleanly onto walnut stock wrist
+    const rightHand = createGlovedHandRig({
+      side: 'right',
+      palmPos: [0.022, -0.072, 0.145],
+      wristDir: [0.22, -0.26, 0.32],
+      gripStyle: 'pistol',
+    });
 
     const sight = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 8, 8), accentAmber);
     sight.position.set(0, 0.071, -0.78);
@@ -2027,25 +2488,28 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       receiver,
       ejectPort,
       shellGlint,
+      rearSightBase,
+      ghostRing,
       stock,
       buttPad,
       triggerGuard,
       trigger,
       barrel,
+      heatShield,
       muzzleCrown,
       topRib,
       magTube,
       magCap,
       barrelClamp,
       pumpForend,
+      rightHand,
       sight,
       muzzlePoint
     );
-    return { group, muzzlePoint, pumpForend };
+    return { group, muzzlePoint, pumpForend, leftHand };
   }
 
   if (weaponId === 'awp') {
-    // Iconic sculpted olive thumbhole sniper chassis (beveled side profile!)
     const chassisGeo = createProfileExtrudeGeo(
       [
         [-0.36, 0.036],
@@ -2061,31 +2525,46 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
         [-0.35, -0.032],
       ],
       0.078,
-      0.011
+      0.011,
+      0.42
     );
     chassisGeo.rotateY(-Math.PI / 2);
     const chassis = new THREE.Mesh(chassisGeo, olivePolymer);
 
-    // Adjustable cheek rest & detachable box magazine
+    // Top Picatinny rail teeth
+    for (let t = 0; t < 12; t++) {
+      const lug = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.009, 0.012), darkSteel);
+      lug.position.set(0, 0.046, -0.02 - t * 0.026);
+      group.add(lug);
+    }
+
     const cheekRest = new THREE.Mesh(
-      createBeveledBoxGeo(0.068, 0.034, 0.14, 0.012, 0.006),
+      createBeveledBoxGeo(0.068, 0.034, 0.14, 0.012, 0.006, 0.2),
       darkSteel
     );
     cheekRest.position.set(0, 0.046, 0.24);
     const mag = new THREE.Mesh(
-      createBeveledBoxGeo(0.056, 0.095, 0.11, 0.008, 0.004),
+      createBeveledBoxGeo(0.056, 0.095, 0.11, 0.008, 0.004, 0.2),
       darkSteel
     );
     mag.position.set(0, -0.078, -0.14);
     mag.rotation.x = 0.08;
 
     // Free-floating fluted match barrel + ported multi-chamber muzzle brake
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0155, 0.023, 0.78, 14), darkSteel);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0155, 0.023, 0.78, 16), darkSteel);
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, 0.042, -0.68);
+    // Machined barrel fluting ribs
+    for (let fl = 0; fl < 4; fl++) {
+      const ang = (fl / 4) * Math.PI * 2 + Math.PI / 4;
+      const flute = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.56, 6), brushedChrome);
+      flute.rotation.x = Math.PI / 2;
+      flute.position.set(Math.cos(ang) * 0.018, 0.042 + Math.sin(ang) * 0.018, -0.64);
+      group.add(flute);
+    }
 
     const brake = new THREE.Mesh(
-      createBeveledBoxGeo(0.044, 0.036, 0.095, 0.008, 0.004),
+      createBeveledBoxGeo(0.044, 0.036, 0.095, 0.008, 0.004, 0.16),
       gunmetal
     );
     brake.position.set(0, 0.042, -1.08);
@@ -2096,7 +2575,6 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       group.add(port);
     }
 
-    // Folding front bipod legs tucked neatly beneath forend
     for (const side of [-1, 1]) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.006, 0.22, 8), darkSteel);
       leg.rotation.x = Math.PI / 2 - 0.12;
@@ -2104,7 +2582,7 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       group.add(leg);
     }
 
-    // Stepped LatheGeometry sniper scope + tinted glass lenses + turrets + twin rings
+    // Stepped LatheGeometry sniper scope + iridescent coated lenses + turrets + bubble level
     const scopeGeo = createLatheProfileGeo(
       [
         [0.028, -0.24],
@@ -2115,7 +2593,7 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
         [0.037, 0.22],
         [0.033, 0.225],
       ],
-      16
+      18
     );
     scopeGeo.rotateX(-Math.PI / 2);
     const scopeBody = new THREE.Mesh(scopeGeo, darkSteel);
@@ -2124,19 +2602,25 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     const objLens = new THREE.Mesh(new THREE.CircleGeometry(0.032, 14), opticGlass);
     objLens.position.set(0, 0.118, -0.422);
     objLens.rotation.y = Math.PI;
-    const ocuLens = new THREE.Mesh(new THREE.CircleGeometry(0.024, 14), opticGlass);
-    ocuLens.position.set(0, 0.118, 0.042);
+    const ocuLens = new THREE.Mesh(new THREE.CircleGeometry(0.022, 16), opticGlass);
+    ocuLens.position.set(0, 0.118, 0.039);
+    const ocuEyecup = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.0055, 8, 18), darkSteel);
+    ocuEyecup.position.set(0, 0.118, 0.042);
+    group.add(ocuEyecup);
 
-    const turretTop = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.028, 10), gunmetal);
+    const turretTop = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.028, 12), gunmetal);
     turretTop.position.set(0, 0.146, -0.18);
-    const turretSide = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 10), gunmetal);
+    const turretSide = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 12), gunmetal);
     turretSide.rotation.z = Math.PI / 2;
     turretSide.position.set(0.028, 0.118, -0.18);
+    const bubbleLevel = new THREE.Mesh(new THREE.CylinderGeometry(0.0038, 0.0038, 0.016, 8), darkSteel);
+    bubbleLevel.rotation.z = Math.PI / 2;
+    bubbleLevel.position.set(-0.028, 0.104, -0.11);
 
     for (const rz of [-0.09, -0.26]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.006, 6, 14), gunmetal);
       ring.position.set(0, 0.118, rz);
-      const pillar = new THREE.Mesh(createBeveledBoxGeo(0.028, 0.048, 0.022, 0.004, 0.002), gunmetal);
+      const pillar = new THREE.Mesh(createBeveledBoxGeo(0.028, 0.048, 0.022, 0.004, 0.002, 0.12), gunmetal);
       pillar.position.set(0, 0.072, rz);
       group.add(ring, pillar);
     }
@@ -2150,6 +2634,19 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     boltKnob.position.set(0.048, -0.018, 0);
     boltHandle.add(boltRod, boltKnob);
 
+    const leftHand = createGlovedHandRig({
+      side: 'left',
+      palmPos: [-0.014, -0.062, -0.28],
+      wristDir: [-0.28, -0.24, 0.36],
+      gripStyle: 'forend',
+    });
+    const rightHand = createGlovedHandRig({
+      side: 'right',
+      palmPos: [0.022, -0.088, 0.12],
+      wristDir: [0.22, -0.26, 0.32],
+      gripStyle: 'pistol',
+    });
+
     muzzlePoint.position.set(0, 0.042, -1.14);
     group.add(
       chassis,
@@ -2162,34 +2659,39 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       ocuLens,
       turretTop,
       turretSide,
+      bubbleLevel,
       boltHandle,
+      leftHand,
+      rightHand,
       muzzlePoint
     );
-    return { group, muzzlePoint, boltHandle };
+    return { group, muzzlePoint, boltHandle, magazine: mag, leftHand };
   }
 
   if (weaponId === 'pistol') {
-    // Beveled dark-steel frame with under-barrel rail
     const frame = new THREE.Mesh(
-      createBeveledBoxGeo(0.056, 0.048, 0.31, 0.01, 0.005),
+      createBeveledBoxGeo(0.056, 0.048, 0.31, 0.01, 0.005, 0.32),
       darkSteel
     );
     frame.position.set(0, 0.004, -0.13);
 
-    // Sculpted Desert Eagle triangular-chamfered brushed chrome slide
     const slide = new THREE.Mesh(
-      createBeveledBoxGeo(0.062, 0.058, 0.31, 0.014, 0.008),
+      createBeveledBoxGeo(0.062, 0.058, 0.31, 0.014, 0.008, 0.32),
       brushedChrome
     );
     slide.position.set(0, 0.048, -0.125);
-    // Slide rear serration ribs
     for (let s = 0; s < 5; s++) {
       const rib = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.04, 0.006), darkSteel);
       rib.position.set(0, 0.048, 0.005 - s * 0.013);
       slide.add(rib);
     }
+    // Twin green tritium rear sights mounted on moving slide
+    for (const ts of [-0.014, 0.014]) {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.0034, 6, 6), tritiumGreen);
+      dot.position.set(ts, 0.082, 0.015);
+      slide.add(dot);
+    }
 
-    // Ergonomic contoured walnut grip & magazine heel plate
     const gripGeo = createProfileExtrudeGeo(
       [
         [-0.03, 0.01],
@@ -2198,17 +2700,27 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
         [0.005, -0.155],
       ],
       0.054,
-      0.01
+      0.01,
+      0.24
     );
     gripGeo.rotateY(-Math.PI / 2);
     const grip = new THREE.Mesh(gripGeo, walnut);
     grip.position.set(0, -0.005, 0.0);
 
+    const pistolMagGroup = new THREE.Group();
+    pistolMagGroup.position.set(0, -0.1, 0.032);
+    const magBody = new THREE.Mesh(
+      createBeveledBoxGeo(0.04, 0.115, 0.064, 0.006, 0.003, 0.18),
+      gunmetal
+    );
+    magBody.position.set(0, 0.004, -0.004);
+    magBody.rotation.x = 0.22;
     const magBase = new THREE.Mesh(
-      createBeveledBoxGeo(0.054, 0.02, 0.088, 0.008, 0.004),
+      createBeveledBoxGeo(0.054, 0.02, 0.088, 0.008, 0.004, 0.18),
       darkSteel
     );
-    magBase.position.set(0, -0.16, 0.045);
+    magBase.position.set(0, -0.06, 0.013);
+    pistolMagGroup.add(magBody, magBase);
 
     const guardCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(0, -0.015, -0.02),
@@ -2225,12 +2737,12 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     hammer.rotation.x = 0.65;
 
     const sightFront = new THREE.Mesh(
-      createBeveledBoxGeo(0.012, 0.016, 0.022, 0.003, 0.002),
+      createBeveledBoxGeo(0.012, 0.016, 0.022, 0.003, 0.002, 0.08),
       accentAmber
     );
     sightFront.position.set(0, 0.084, -0.268);
     const compensator = new THREE.Mesh(
-      createBeveledBoxGeo(0.054, 0.052, 0.064, 0.01, 0.005),
+      createBeveledBoxGeo(0.054, 0.052, 0.064, 0.01, 0.005, 0.16),
       darkSteel
     );
     compensator.position.set(0, 0.044, -0.312);
@@ -2238,13 +2750,39 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     bore.rotation.x = Math.PI / 2;
     bore.position.set(0, 0.048, -0.342);
 
+    // Two-handed tactical Weaver-stance gloved grip
+    const rightHand = createGlovedHandRig({
+      side: 'right',
+      palmPos: [0.026, -0.068, 0.032],
+      wristDir: [0.16, -0.22, 0.34],
+      gripStyle: 'pistol',
+    });
+    const leftHand = createGlovedHandRig({
+      side: 'left',
+      palmPos: [-0.032, -0.072, 0.018],
+      wristDir: [-0.22, -0.22, 0.34],
+      gripStyle: 'pistol',
+    });
+
     muzzlePoint.position.set(0, 0.048, -0.365);
-    group.add(frame, slide, grip, magBase, guard, hammer, sightFront, compensator, bore, muzzlePoint);
-    return { group, muzzlePoint, slide };
+    group.add(
+      frame,
+      slide,
+      grip,
+      pistolMagGroup,
+      guard,
+      hammer,
+      sightFront,
+      compensator,
+      bore,
+      rightHand,
+      leftHand,
+      muzzlePoint
+    );
+    return { group, muzzlePoint, slide, magazine: pistolMagGroup, leftHand };
   }
 
   if (weaponId === 'minigun') {
-    // Stepped LatheGeometry rotary motor housing with cooling fins
     const housingGeo = createLatheProfileGeo(
       [
         [0.06, -0.2],
@@ -2263,7 +2801,11 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     const housing = new THREE.Mesh(housingGeo, darkSteel);
     housing.position.set(0, -0.06, -0.12);
 
-    // Chainsaw curved tubular top carry handle + mounting brackets
+    // Glowing green motor-drive status LED on rear housing
+    const motorLed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), tritiumGreen);
+    motorLed.position.set(0.065, 0.008, 0.05);
+    group.add(motorLed);
+
     const handleCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-0.075, 0.02, -0.04),
       new THREE.Vector3(-0.08, 0.12, -0.06),
@@ -2276,28 +2818,33 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       gunmetal
     );
 
-    // Beveled olive ammo drum + curved flexible brass-link feed chute!
+    const drumGroup = new THREE.Group();
+    drumGroup.position.set(-0.125, -0.145, -0.14);
     const ammoDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.088, 0.17, 16), olivePolymer);
-    ammoDrum.position.set(-0.125, -0.145, -0.14);
     const drumRim = new THREE.Mesh(new THREE.TorusGeometry(0.088, 0.01, 6, 16), darkSteel);
     drumRim.rotation.x = Math.PI / 2;
-    drumRim.position.set(-0.125, -0.06, -0.14);
+    drumRim.position.set(0, 0.085, 0);
+    drumGroup.add(ammoDrum, drumRim);
 
+    // Individual gleaming brass 7.62mm cartridges linked along feed chute!
     const chuteCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-0.125, -0.06, -0.14),
-      new THREE.Vector3(-0.14, -0.02, -0.14),
-      new THREE.Vector3(-0.085, -0.04, -0.14),
+      new THREE.Vector3(-0.145, -0.015, -0.14),
+      new THREE.Vector3(-0.085, -0.035, -0.14),
     ]);
-    const ammoChute = new THREE.Mesh(
-      new THREE.TubeGeometry(chuteCurve, 10, 0.026, 8, false),
-      brassMat
-    );
+    for (let r = 0; r < 9; r++) {
+      const pt = chuteCurve.getPoint(r / 8);
+      const round = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.0065, 0.056, 8), brassMat);
+      round.rotation.x = Math.PI / 2;
+      round.position.copy(pt);
+      group.add(round);
+    }
 
     const barrelCluster = new THREE.Group();
     barrelCluster.position.set(0, -0.06, -0.31);
-    const singleBarrelGeo = new THREE.CylinderGeometry(0.013, 0.014, 0.74, 10);
+    const singleBarrelGeo = new THREE.CylinderGeometry(0.013, 0.014, 0.74, 12);
     singleBarrelGeo.rotateX(Math.PI / 2);
-    const muzzleTipGeo = new THREE.CylinderGeometry(0.0155, 0.0135, 0.042, 10);
+    const muzzleTipGeo = new THREE.CylinderGeometry(0.0155, 0.0135, 0.042, 12);
     muzzleTipGeo.rotateX(Math.PI / 2);
     for (let i = 0; i < 6; i++) {
       const ang = (i / 6) * Math.PI * 2;
@@ -2318,12 +2865,26 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
       barrelCluster.add(clamp, hub);
     }
 
+    // Left gloved hand gripping outer-left carry frame cleanly from bottom-left (zero screen occlusion!)
+    const leftHand = createGlovedHandRig({
+      side: 'left',
+      palmPos: [-0.088, 0.018, -0.09],
+      wristDir: [-0.34, -0.34, 0.24],
+      gripStyle: 'handle',
+    });
+    const rightHand = createGlovedHandRig({
+      side: 'right',
+      palmPos: [0.062, -0.095, 0.12],
+      wristDir: [0.24, -0.26, 0.28],
+      gripStyle: 'pistol',
+    });
+
     muzzlePoint.position.set(0, -0.06, -1.06);
-    group.add(housing, handleTop, ammoDrum, drumRim, ammoChute, barrelCluster, muzzlePoint);
-    return { group, muzzlePoint, barrelCluster };
+    group.add(housing, handleTop, drumGroup, barrelCluster, leftHand, rightHand, muzzlePoint);
+    return { group, muzzlePoint, barrelCluster, ammoDrum: drumGroup, leftHand };
   }
 
-  // P90 iconic contoured ergonomic bullpup thumbhole profile (ExtrudeGeometry silhouette, zero boxy bricks!)
+  // P90 iconic contoured ergonomic bullpup thumbhole profile
   const p90MagTex = getP90MagTextures();
   const p90Shape = new THREE.Shape();
   p90Shape.moveTo(-0.37, 0.045);
@@ -2336,7 +2897,6 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   p90Shape.lineTo(-0.38, -0.045);
   p90Shape.closePath();
 
-  // Authentic dual thumbhole ergonomic cutouts inside the P90 frame!
   const rearHole = new THREE.Path();
   rearHole.moveTo(0.09, 0.005);
   rearHole.lineTo(0.145, 0.005);
@@ -2364,39 +2924,50 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   p90BodyGeo.translate(0, 0, -0.026);
   p90BodyGeo.rotateY(-Math.PI / 2);
   p90BodyGeo.computeVertexNormals();
+  normalizeBoxProjectedUVs(p90BodyGeo, 0.36);
   const p90Body = new THREE.Mesh(p90BodyGeo, darkSteel);
 
   const upperReceiver = new THREE.Mesh(
-    createBeveledBoxGeo(0.058, 0.036, 0.4, 0.01, 0.005),
+    createBeveledBoxGeo(0.058, 0.036, 0.4, 0.01, 0.005, 0.35),
     gunmetal
   );
   upperReceiver.position.set(0, 0.056, -0.14);
 
   const sideHandle = new THREE.Mesh(
-    createBeveledBoxGeo(0.094, 0.018, 0.038, 0.006, 0.003),
+    createBeveledBoxGeo(0.094, 0.018, 0.038, 0.006, 0.003, 0.16),
     brushedChrome
   );
   sideHandle.position.set(0, 0.032, -0.28);
 
-  // Translucent smoked top-mounted 50-round magazine with visible brass rounds inside
+  // Side-mounted tactical laser module with glowing ruby emitter
+  const laserPod = new THREE.Mesh(
+    createBeveledBoxGeo(0.024, 0.026, 0.074, 0.005, 0.003, 0.14),
+    darkSteel
+  );
+  laserPod.position.set(0.044, 0.088, -0.32);
+  const laserDot = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 6, 6), tritiumGreen);
+  laserDot.position.set(0.044, 0.088, -0.36);
+  group.add(laserPod, laserDot);
+
   const topMag = new THREE.Mesh(
-    createBeveledBoxGeo(0.054, 0.032, 0.34, 0.008, 0.004),
-    new THREE.MeshStandardMaterial({
+    createBeveledBoxGeo(0.054, 0.032, 0.34, 0.008, 0.004, 0.32),
+    new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
       map: p90MagTex.map,
       normalMap: p90MagTex.normalMap,
       normalScale: new THREE.Vector2(0.85, 0.85),
-      roughness: 0.24,
-      metalness: 0.22,
+      roughness: 0.2,
+      metalness: 0.18,
+      clearcoat: 0.85,
+      clearcoatRoughness: 0.12,
       transparent: true,
-      opacity: 0.88,
+      opacity: 0.9,
     })
   );
   topMag.position.set(0, 0.084, -0.09);
 
-  // Sculpted integrated ring sight bridge & glowing holographic lens
   const opticBridge = new THREE.Mesh(
-    createBeveledBoxGeo(0.044, 0.052, 0.115, 0.01, 0.005),
+    createBeveledBoxGeo(0.044, 0.052, 0.115, 0.01, 0.005, 0.2),
     gunmetal
   );
   opticBridge.position.set(0, 0.1, -0.335);
@@ -2427,6 +2998,19 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   flashHider.rotation.x = Math.PI / 2;
   flashHider.position.set(0, 0.026, -0.482);
 
+  const leftHand = createGlovedHandRig({
+    side: 'left',
+    palmPos: [-0.028, -0.058, -0.24],
+    wristDir: [-0.26, -0.22, 0.34],
+    gripStyle: 'forend',
+  });
+  const rightHand = createGlovedHandRig({
+    side: 'right',
+    palmPos: [0.028, -0.052, 0.04],
+    wristDir: [0.18, -0.22, 0.34],
+    gripStyle: 'pistol',
+  });
+
   muzzlePoint.position.set(0, 0.026, -0.515);
   group.add(
     p90Body,
@@ -2439,9 +3023,11 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     redDot,
     barrelTip,
     flashHider,
+    leftHand,
+    rightHand,
     muzzlePoint
   );
-  return { group, muzzlePoint };
+  return { group, muzzlePoint, magazine: topMag, chargingHandle: sideHandle, leftHand };
 }
 
 /**
@@ -2471,11 +3057,13 @@ export function createEnemyModel(
   };
 
   const bootMat = trackMat(
-    new THREE.MeshStandardMaterial({
-      color: 0x26282c,
-      normalScale: new THREE.Vector2(1.3, 1.3),
-      roughness: 0.7,
-      metalness: 0.18,
+    new THREE.MeshPhysicalMaterial({
+      color: 0x24262b,
+      normalScale: new THREE.Vector2(1.35, 1.35),
+      roughness: 0.56,
+      metalness: 0.16,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.42,
     })
   );
   eMaps.wool.attach(bootMat, false);
@@ -2706,44 +3294,69 @@ export function createEnemyModel(
   if (kind === 'crawler') {
     pelvisBaseY = 0.82;
     const skinMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xd6cfc2,
-        normalScale: new THREE.Vector2(1.45, 1.45),
-        roughness: 1.0,
-        metalness: 0.04,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x9c9386,
+        normalScale: new THREE.Vector2(1.5, 1.5),
+        roughness: 0.9,
+        metalness: 0.02,
+        clearcoat: 0.04,
+        clearcoatRoughness: 0.74,
+        sheen: 0.14,
+        sheenColor: new THREE.Color(0x7d8492),
       })
     );
     eMaps.skin.attach(skinMat, true);
 
     const ragMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xa4adb8,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x8d96a2,
         normalScale: new THREE.Vector2(1.5, 1.5),
-        roughness: 1.0,
-        metalness: 0.05,
+        roughness: 0.98,
+        metalness: 0.04,
+        sheen: 0.42,
+        sheenRoughness: 0.8,
+        sheenColor: new THREE.Color(0x6c7686),
       })
     );
     eMaps.wool.attach(ragMat, true);
 
     const trouserMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0x5c6470,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x565e6a,
         normalScale: new THREE.Vector2(1.4, 1.4),
-        roughness: 1.0,
-        metalness: 0.05,
+        roughness: 0.98,
+        metalness: 0.04,
+        sheen: 0.38,
+        sheenRoughness: 0.82,
+        sheenColor: new THREE.Color(0x4b5360),
       })
     );
     eMaps.wool.attach(trouserMat, true);
 
     const scleraMat = trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x050507, roughness: 0.16, metalness: 0.12 })
+      new THREE.MeshPhysicalMaterial({
+        color: 0x050507,
+        roughness: 0.24,
+        metalness: 0.08,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.25,
+      })
+    );
+    const toothMat = trackMat(
+      new THREE.MeshPhysicalMaterial({
+        color: 0xbcb092,
+        roughness: 0.56,
+        metalness: 0.03,
+        clearcoat: 0.14,
+        clearcoatRoughness: 0.42,
+      })
     );
     const eyeMat = trackMat(
       new THREE.MeshStandardMaterial({
         color: 0xff2828,
         emissive: 0xff1111,
-        emissiveIntensity: 4.2,
-        roughness: 0.15,
+        emissiveIntensity: 3.0,
+        roughness: 0.2,
       }),
       true
     );
@@ -2873,10 +3486,30 @@ export function createEnemyModel(
       skinMat
     );
     brow.position.set(0, 0.095, 0.14);
-    const jawMaw = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), scleraMat);
-    jawMaw.scale.set(0.95, 1.25, 0.55);
-    jawMaw.position.set(0, -0.09, 0.155);
+    const jawMaw = new THREE.Mesh(new THREE.SphereGeometry(0.078, 12, 10), scleraMat);
+    jawMaw.scale.set(0.95, 1.3, 0.55);
+    jawMaw.position.set(0, -0.095, 0.155);
     headMesh.add(brow, jawMaw);
+
+    // Gaunt sunken cheekbones & 6 jagged stained fangs lining the gaping mandible
+    for (const side of [-1, 1]) {
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.044, 8, 8), skinMat);
+      cheek.scale.set(0.85, 0.65, 1.25);
+      cheek.position.set(side * 0.11, -0.02, 0.14);
+      headMesh.add(cheek);
+    }
+    const fangGeo = new THREE.ConeGeometry(0.012, 0.044, 5);
+    for (let f = -2; f <= 2; f++) {
+      const topFang = new THREE.Mesh(fangGeo, toothMat);
+      topFang.rotation.x = Math.PI;
+      topFang.position.set(f * 0.024, -0.032, 0.195 - Math.abs(f) * 0.009);
+      headMesh.add(topFang);
+      if (Math.abs(f) <= 1) {
+        const botFang = new THREE.Mesh(fangGeo, toothMat);
+        botFang.position.set(f * 0.028, -0.152, 0.188 - Math.abs(f) * 0.008);
+        headMesh.add(botFang);
+      }
+    }
 
     const socketL = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), scleraMat);
     socketL.position.set(0.074, 0.032, 0.165);
@@ -2923,56 +3556,79 @@ export function createEnemyModel(
   } else if (kind === 'lampshade') {
     pelvisBaseY = 1.02;
     const coatMat = trackMat(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: 0x9aa4b4,
-        normalScale: new THREE.Vector2(1.55, 1.55),
-        roughness: 1.0,
+        normalScale: new THREE.Vector2(1.65, 1.65),
+        roughness: 0.96,
         metalness: 0.06,
+        sheen: 0.65,
+        sheenRoughness: 0.72,
+        sheenColor: new THREE.Color(0x8894a8),
       })
     );
     eMaps.wool.attach(coatMat, true);
 
     const trouserMat = trackMat(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: 0x4b5260,
-        normalScale: new THREE.Vector2(1.4, 1.4),
-        roughness: 1.0,
+        normalScale: new THREE.Vector2(1.45, 1.45),
+        roughness: 0.96,
         metalness: 0.06,
+        sheen: 0.5,
+        sheenRoughness: 0.78,
       })
     );
     eMaps.wool.attach(trouserMat, true);
 
     const skinMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xc9c2b8,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x999187,
         normalScale: new THREE.Vector2(1.4, 1.4),
-        roughness: 1.0,
-        metalness: 0.04,
+        roughness: 0.9,
+        metalness: 0.03,
+        clearcoat: 0.04,
+        clearcoatRoughness: 0.72,
       })
     );
     eMaps.skin.attach(skinMat, true);
 
     const cageMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0x7c8694,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x768090,
         normalScale: new THREE.Vector2(1.25, 1.25),
-        roughness: 1.0,
+        roughness: 0.8,
         metalness: 0.82,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.45,
       })
     );
     wMaps.metal.attach(cageMat, true);
 
     const glowMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xffd280,
-        normalMap: wMaps.metal.normalMap,
-        normalScale: new THREE.Vector2(0.45, 0.45),
-        emissive: 0xe8963a,
-        emissiveIntensity: 3.6,
-        roughness: 0.18,
+      new THREE.MeshPhysicalMaterial({
+        color: 0xffe4a0,
+        emissive: 0xffaa44,
+        emissiveIntensity: 2.6,
+        roughness: 0.2,
+        metalness: 0.08,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.24,
       }),
       true
     );
+
+    const bulbGlassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffe6b8,
+      emissive: 0xd9842b,
+      emissiveIntensity: 0.75,
+      roughness: 0.18,
+      metalness: 0.04,
+      clearcoat: 0.45,
+      clearcoatRoughness: 0.18,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+    });
 
     pelvisGroup.position.y = pelvisBaseY;
     bodyGroup.add(pelvisGroup);
@@ -3071,7 +3727,7 @@ export function createEnemyModel(
     shoulderMantle.castShadow = true;
     spineGroup.add(shoulderMantle);
 
-    // Double row of metallic coat buttons
+    // Double row of metallic coat buttons + Sam Browne leather cross-strap & dangling power cord
     for (let b = 0; b < 3; b++) {
       for (const side of [-0.07, 0.07]) {
         const btn = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), cageMat);
@@ -3079,39 +3735,84 @@ export function createEnemyModel(
         spineGroup.add(btn);
       }
     }
+    const crossStrap = new THREE.Mesh(
+      createBeveledBoxGeo(0.068, 0.92, 0.032, 0.008, 0.004),
+      bootMat
+    );
+    crossStrap.position.set(0.01, 0.45, 0.245);
+    crossStrap.rotation.z = -0.46;
+    spineGroup.add(crossStrap);
+
+    const powerCordCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.05, 0.92, -0.14),
+      new THREE.Vector3(0.16, 0.62, -0.28),
+      new THREE.Vector3(0.08, 0.24, -0.29),
+      new THREE.Vector3(0.22, -0.14, -0.34),
+      new THREE.Vector3(0.18, -0.46, -0.3),
+    ]);
+    const powerCord = new THREE.Mesh(
+      new THREE.TubeGeometry(powerCordCurve, 16, 0.014, 6, false),
+      bootMat
+    );
+    spineGroup.add(powerCord);
 
     neckGroup.position.set(0, 0.92, 0);
     spineGroup.add(neckGroup);
 
-    // Intricate wrought-iron lampshade head: fluted brass cap, 8 filigree ribs, lower shade ring & glowing bulb!
+    // Open wrought-iron lampshade cage revealing a clearcoat glass bulb & glowing helical tungsten filament!
     headMesh = new THREE.Mesh(
       createLatheProfileGeo(
         [
-          [0.32, -0.02],
-          [0.33, 0.03],
-          [0.27, 0.14],
-          [0.22, 0.34],
-          [0.16, 0.42],
-          [0.04, 0.49],
-          [0.01, 0.56],
+          [0.33, 0.28],
+          [0.24, 0.36],
+          [0.16, 0.44],
+          [0.05, 0.5],
+          [0.012, 0.58],
         ],
-        14
+        16
       ),
       cageMat
     );
     headMesh.position.y = 0.06;
     headMesh.castShadow = true;
 
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 14), glowMat);
-    bulb.position.y = 0.16;
-    headMesh.add(bulb);
+    const lowerCageRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.018, 8, 20), cageMat);
+    lowerCageRing.rotation.x = Math.PI / 2;
+    lowerCageRing.position.y = 0.02;
+    const midCageRing = new THREE.Mesh(new THREE.TorusGeometry(0.295, 0.012, 6, 18), cageMat);
+    midCageRing.rotation.x = Math.PI / 2;
+    midCageRing.position.y = 0.16;
+    headMesh.add(lowerCageRing, midCageRing);
 
-    for (let r = 0; r < 6; r++) {
-      const ang = (r / 6) * Math.PI * 2;
-      const rib = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.36, 4, 6), cageMat);
-      rib.position.set(Math.cos(ang) * 0.26, 0.2, Math.sin(ang) * 0.26);
-      rib.rotation.z = -Math.cos(ang) * 0.24;
-      rib.rotation.x = Math.sin(ang) * 0.24;
+    // Brass screw socket + glowing helical tungsten filament inside blown clearcoat glass bulb
+    const bulbSocket = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.09, 12), cageMat);
+    bulbSocket.position.y = 0.32;
+    const filamentPts: THREE.Vector3[] = [];
+    for (let f = 0; f <= 18; f++) {
+      const t = f / 18;
+      const a = t * Math.PI * 6;
+      const r = 0.048 * Math.sin(t * Math.PI);
+      filamentPts.push(new THREE.Vector3(Math.cos(a) * r, 0.09 + t * 0.19, Math.sin(a) * r));
+    }
+    const filamentMesh = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(filamentPts), 24, 0.011, 6, false),
+      glowMat
+    );
+    const bulbCore = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 10), glowMat);
+    bulbCore.position.y = 0.18;
+    const bulbGlass = new THREE.Mesh(new THREE.SphereGeometry(0.165, 16, 14), bulbGlassMat);
+    bulbGlass.scale.set(0.92, 1.16, 0.92);
+    bulbGlass.position.y = 0.17;
+    headMesh.add(bulbSocket, filamentMesh, bulbCore, bulbGlass);
+
+    for (let r = 0; r < 8; r++) {
+      const ang = (r / 8) * Math.PI * 2;
+      const ribCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(Math.cos(ang) * 0.32, 0.02, Math.sin(ang) * 0.32),
+        new THREE.Vector3(Math.cos(ang) * 0.3, 0.16, Math.sin(ang) * 0.3),
+        new THREE.Vector3(Math.cos(ang) * 0.32, 0.29, Math.sin(ang) * 0.32),
+      ]);
+      const rib = new THREE.Mesh(new THREE.TubeGeometry(ribCurve, 8, 0.011, 6, false), cageMat);
       headMesh.add(rib);
     }
     neckGroup.add(headMesh);
@@ -3150,21 +3851,26 @@ export function createEnemyModel(
   } else if (kind === 'screamer') {
     pelvisBaseY = 0.98;
     const robeMat = trackMat(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: 0x9c95a8,
-        normalScale: new THREE.Vector2(1.55, 1.55),
-        roughness: 1.0,
+        normalScale: new THREE.Vector2(1.6, 1.6),
+        roughness: 0.98,
         metalness: 0.05,
+        sheen: 0.65,
+        sheenRoughness: 0.72,
+        sheenColor: new THREE.Color(0x9a8cb2),
       })
     );
     eMaps.wool.attach(robeMat, true);
 
     const maskMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xe8e2d6,
+      new THREE.MeshPhysicalMaterial({
+        color: 0xb6aea2,
         normalScale: new THREE.Vector2(1.5, 1.5),
-        roughness: 1.0,
-        metalness: 0.06,
+        roughness: 0.86,
+        metalness: 0.03,
+        clearcoat: 0.06,
+        clearcoatRoughness: 0.68,
       })
     );
     eMaps.skin.attach(maskMat, true);
@@ -3172,22 +3878,27 @@ export function createEnemyModel(
     const shriekCoreMat = trackMat(
       new THREE.MeshStandardMaterial({
         color: 0xff5a5a,
-        emissive: 0xc93b3b,
-        emissiveIntensity: 3.4,
-        roughness: 0.22,
+        emissive: 0xd93030,
+        emissiveIntensity: 2.5,
+        roughness: 0.28,
       }),
       true
     );
 
     const exeSocketMat = trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x050507, roughness: 0.16 })
+      new THREE.MeshPhysicalMaterial({
+        color: 0x050507,
+        roughness: 0.24,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.24,
+      })
     );
     const exePupilMat = trackMat(
       new THREE.MeshStandardMaterial({
         color: 0xff2020,
         emissive: 0xff1414,
-        emissiveIntensity: 4.6,
-        roughness: 0.15,
+        emissiveIntensity: 3.2,
+        roughness: 0.2,
       }),
       true
     );
@@ -3310,6 +4021,29 @@ export function createEnemyModel(
     headMesh.position.set(0, 0.24, 0.02);
     headMesh.castShadow = true;
 
+    // Stretched sternocleidomastoid neck tendons linking jaw to clavicle
+    for (const side of [-1, 1]) {
+      const tendonCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.095, -0.05, 0.05),
+        new THREE.Vector3(side * 0.058, 0.05, 0.075),
+        new THREE.Vector3(side * 0.044, 0.15, 0.04),
+      ]);
+      const tendon = new THREE.Mesh(
+        new THREE.TubeGeometry(tendonCurve, 8, 0.014, 6, false),
+        maskMat
+      );
+      neckGroup.add(tendon);
+    }
+
+    // Cracked porcelain brow ridge & angular cheekbone hollows
+    const crackLine = new THREE.Mesh(
+      createBeveledBoxGeo(0.012, 0.24, 0.018, 0.004, 0.002),
+      exeSocketMat
+    );
+    crackLine.position.set(0.045, 0.22, 0.165);
+    crackLine.rotation.z = 0.26;
+    headMesh.add(crackLine);
+
     const sEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.064, 10, 10), exeSocketMat);
     sEyeL.scale.set(0.85, 1.35, 0.75);
     sEyeL.position.set(0.082, 0.1, 0.16);
@@ -3366,65 +4100,76 @@ export function createEnemyModel(
     pelvisBaseY = 1.44;
     shadowRadius = 1.45;
     const heavyCoat = trackMat(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: 0x9aa2b0,
-        normalScale: new THREE.Vector2(1.65, 1.65),
-        roughness: 1.0,
+        normalScale: new THREE.Vector2(1.7, 1.7),
+        roughness: 0.96,
         metalness: 0.08,
+        sheen: 0.72,
+        sheenRoughness: 0.7,
+        sheenColor: new THREE.Color(0x8a92a4),
       })
     );
     eMaps.wool.attach(heavyCoat, true);
 
     const armorLegMat = trackMat(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         color: 0x4f5662,
-        normalScale: new THREE.Vector2(1.4, 1.4),
-        roughness: 0.85,
-        metalness: 0.25,
+        normalScale: new THREE.Vector2(1.45, 1.45),
+        roughness: 0.76,
+        metalness: 0.34,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.4,
       })
     );
     eMaps.wool.attach(armorLegMat, true);
 
     const maskMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xebe4d8,
-        normalScale: new THREE.Vector2(1.55, 1.55),
-        roughness: 1.0,
-        metalness: 0.08,
+      new THREE.MeshPhysicalMaterial({
+        color: 0xb8b0a2,
+        normalScale: new THREE.Vector2(1.5, 1.5),
+        roughness: 0.86,
+        metalness: 0.04,
+        clearcoat: 0.06,
+        clearcoatRoughness: 0.68,
       })
     );
     eMaps.skin.attach(maskMat, true);
 
     const lanternMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0xffc66b,
+      new THREE.MeshPhysicalMaterial({
+        color: 0xffd078,
         normalMap: wMaps.metal.normalMap,
         normalScale: new THREE.Vector2(0.5, 0.5),
-        emissive: 0xe8963a,
-        emissiveIntensity: 4.0,
-        roughness: 0.18,
+        emissive: 0xff9d36,
+        emissiveIntensity: 2.8,
+        roughness: 0.22,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.24,
       }),
       true
     );
     const ironMat = trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0x788290,
-        normalScale: new THREE.Vector2(1.25, 1.25),
-        roughness: 1.0,
-        metalness: 0.86,
+      new THREE.MeshPhysicalMaterial({
+        color: 0x768090,
+        normalScale: new THREE.Vector2(1.3, 1.3),
+        roughness: 0.78,
+        metalness: 0.84,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.42,
       })
     );
     wMaps.metal.attach(ironMat, true);
 
     const bossSocketMat = trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x050507, roughness: 0.15 })
+      new THREE.MeshPhysicalMaterial({ color: 0x050507, roughness: 0.24, clearcoat: 0.25 })
     );
     const bossRedEyeMat = trackMat(
       new THREE.MeshStandardMaterial({
         color: 0xff1e1e,
         emissive: 0xff1111,
-        emissiveIntensity: 5.0,
-        roughness: 0.15,
+        emissiveIntensity: 3.4,
+        roughness: 0.18,
       }),
       true
     );
@@ -3517,18 +4262,57 @@ export function createEnemyModel(
     chest.receiveShadow = true;
     spineGroup.add(chest);
 
-    // Curved sculpted iron shoulder pauldrons & high storm collar (replaces boxy shoulders!)
+    // Layered riveted iron pauldrons with rim studs & high storm collar
     for (const side of [-1, 1]) {
       const pauldron = new THREE.Mesh(
-        new THREE.SphereGeometry(0.42, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.58),
+        new THREE.SphereGeometry(0.42, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.58),
         ironMat
       );
       pauldron.scale.set(1.12, 0.78, 1.05);
       pauldron.position.set(side * 0.72, 1.08, 0.0);
       pauldron.rotation.z = -side * 0.32;
       pauldron.castShadow = true;
-      spineGroup.add(pauldron);
+      const lowerTier = new THREE.Mesh(
+        new THREE.TorusGeometry(0.39, 0.04, 8, 16),
+        ironMat
+      );
+      lowerTier.rotation.x = Math.PI / 2;
+      lowerTier.position.set(side * 0.78, 0.94, 0.0);
+      lowerTier.rotation.y = -side * 0.22;
+      spineGroup.add(pauldron, lowerTier);
+
+      for (let st = 0; st < 4; st++) {
+        const ang = -0.8 + st * 0.52;
+        const stud = new THREE.Mesh(new THREE.SphereGeometry(0.028, 6, 6), ironMat);
+        stud.position.set(
+          side * (0.76 + Math.cos(ang) * 0.34),
+          1.03,
+          Math.sin(ang) * 0.34
+        );
+        spineGroup.add(stud);
+      }
     }
+
+    // Hanging chained iron hip censer with smoldering ember core on Watchman's left hip
+    const censerChain = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.44, 6), ironMat);
+    censerChain.position.set(0.55, -0.22, 0.18);
+    const censerBody = new THREE.Mesh(
+      createLatheProfileGeo(
+        [
+          [0.02, -0.16],
+          [0.14, -0.06],
+          [0.16, 0.04],
+          [0.09, 0.14],
+        ],
+        12
+      ),
+      ironMat
+    );
+    censerBody.position.set(0.55, -0.48, 0.18);
+    const censerEmber = new THREE.Mesh(new THREE.SphereGeometry(0.095, 10, 8), lanternMat);
+    censerEmber.position.set(0.55, -0.46, 0.18);
+    pelvisGroup.add(censerChain, censerBody, censerEmber);
+
     const highCollar = new THREE.Mesh(
       new THREE.CylinderGeometry(0.46, 0.56, 0.32, 14, 1, true, Math.PI * 0.18, Math.PI * 1.64),
       heavyCoat
@@ -3537,15 +4321,15 @@ export function createEnemyModel(
     highCollar.position.set(0, 1.32, -0.06);
     spineGroup.add(highCollar);
 
-    // Caged chest furnace lantern with iron bars
+    // Caged chest furnace lantern with riveted iron vertical & horizontal grate bars
     const chestLanternCore = new THREE.Mesh(
       createLatheProfileGeo(
         [
           [0.21, -0.26],
-          [0.25, 0.0],
+          [0.26, 0.0],
           [0.21, 0.26],
         ],
-        12
+        14
       ),
       lanternMat
     );
@@ -3556,11 +4340,18 @@ export function createEnemyModel(
       bar.position.set(b * 0.085, 0.68, 0.64 - Math.abs(b) * 0.028);
       spineGroup.add(bar);
     }
+    for (const hy of [0.54, 0.82]) {
+      const hBar = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.016, 6, 14, Math.PI * 0.85), ironMat);
+      hBar.rotation.x = Math.PI / 2;
+      hBar.rotation.z = -Math.PI * 0.425;
+      hBar.position.set(0, hy, 0.44);
+      spineGroup.add(hBar);
+    }
 
     neckGroup.position.set(0, 1.32, 0.04);
     spineGroup.add(neckGroup);
 
-    // Sculpted elongated Watchman mask with iron brow crown
+    // Sculpted elongated Watchman mask with spiked wrought-iron halo crown
     headMesh = new THREE.Mesh(
       createLatheProfileGeo(
         [
@@ -3580,10 +4371,20 @@ export function createEnemyModel(
     headMesh.position.set(0, 0.26, 0.04);
     headMesh.castShadow = true;
 
-    const crownRim = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.036, 8, 16), ironMat);
+    const crownRim = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.036, 8, 18), ironMat);
     crownRim.rotation.x = Math.PI / 2;
     crownRim.position.set(0, 0.34, 0);
     headMesh.add(crownRim);
+
+    // 7 tapered wrought-iron halo spikes rising from the Watchman's brow crown
+    for (let sp = 0; sp < 7; sp++) {
+      const ang = -Math.PI * 0.72 + (sp / 6) * Math.PI * 1.44;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.26 + (sp === 3 ? 0.1 : 0), 6), ironMat);
+      spike.position.set(Math.sin(ang) * 0.35, 0.47, Math.cos(ang) * 0.35);
+      spike.rotation.z = -Math.sin(ang) * 0.28;
+      spike.rotation.x = Math.cos(ang) * 0.22;
+      headMesh.add(spike);
+    }
 
     const eyeSocketL = new THREE.Mesh(new THREE.SphereGeometry(0.095, 10, 10), bossSocketMat);
     eyeSocketL.position.set(0.135, 0.14, 0.28);
@@ -3701,29 +4502,84 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
   bodyMesh.receiveShadow = true;
   group.add(bodyMesh);
 
+  // Glossy smoked glass cabin over visible interior silhouette (seats, dashboard, steering wheel, mirror)
+  const cabinGlassMat = new THREE.MeshPhysicalMaterial({
+    color: 0x0f1822,
+    roughness: 0.08,
+    metalness: 0.25,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
+    transparent: true,
+    opacity: 0.68,
+    envMapIntensity: 2.2,
+  });
+  const interiorMat = new THREE.MeshStandardMaterial({
+    color: 0x161414,
+    roughness: 0.88,
+    metalness: 0.06,
+  });
+  const chromeTrimMat = new THREE.MeshPhysicalMaterial({
+    color: 0xd4dbe4,
+    roughness: 0.16,
+    metalness: 0.95,
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: 2.3,
+  });
+
+  // Interior cabin seats, dashboard & steering wheel visible through smoked glass
+  const dash = new THREE.Mesh(createBeveledBoxGeo(1.36, 0.18, 0.34, 0.02, 0.008), interiorMat);
+  dash.position.set(0, 0.96, 0.44);
+  const steerWheel = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 6, 16), interiorMat);
+  steerWheel.position.set(-0.34, 1.04, 0.26);
+  steerWheel.rotation.x = 0.42;
+  const rearMirror = new THREE.Mesh(createBeveledBoxGeo(0.18, 0.055, 0.03, 0.008, 0.004), interiorMat);
+  rearMirror.position.set(0, 1.29, 0.46);
+  group.add(dash, steerWheel, rearMirror);
+  for (const sx of [-0.34, 0.34]) {
+    const seatBack = new THREE.Mesh(createBeveledBoxGeo(0.42, 0.46, 0.12, 0.03, 0.01), interiorMat);
+    seatBack.position.set(sx, 1.04, -0.18);
+    seatBack.rotation.x = -0.16;
+    const headrest = new THREE.Mesh(createBeveledBoxGeo(0.2, 0.14, 0.09, 0.02, 0.008), interiorMat);
+    headrest.position.set(sx, 1.28, -0.22);
+    group.add(seatBack, headrest);
+  }
+
   // Angled reflective windshield, rear window & side greenhouse glass
   const windshield = new THREE.Mesh(
-    createBeveledBoxGeo(1.42, 0.56, 0.05, 0.04, 0.01),
-    materials.windowDark
+    createBeveledBoxGeo(1.42, 0.56, 0.04, 0.04, 0.008),
+    cabinGlassMat
   );
   windshield.position.set(0, 1.15, 0.69);
   windshield.rotation.x = -0.68;
 
   const rearGlass = new THREE.Mesh(
-    createBeveledBoxGeo(1.4, 0.52, 0.05, 0.04, 0.01),
-    materials.windowDark
+    createBeveledBoxGeo(1.4, 0.52, 0.04, 0.04, 0.008),
+    cabinGlassMat
   );
   rearGlass.position.set(0, 1.14, -1.14);
   rearGlass.rotation.x = 0.62;
 
   const sideGlass = new THREE.Mesh(
-    createBeveledBoxGeo(1.66, 0.38, 1.56, 0.04, 0.01),
-    materials.windowDark
+    createBeveledBoxGeo(1.66, 0.38, 1.56, 0.04, 0.008),
+    cabinGlassMat
   );
   sideGlass.position.set(0, 1.14, -0.25);
-  group.add(windshield, rearGlass, sideGlass);
 
-  // Chrome wrap-around front & rear bumpers + bumperettes
+  // Dual chrome windshield wipers resting at the base of the glass + whip radio antenna
+  for (const wx of [-0.34, 0.22]) {
+    const wiper = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.46, 6), chromeTrimMat);
+    wiper.rotation.z = 1.28;
+    wiper.rotation.x = -0.58;
+    wiper.position.set(wx, 0.96, 0.87);
+    group.add(wiper);
+  }
+  const whipAntenna = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.008, 0.92, 6), chromeTrimMat);
+  whipAntenna.position.set(0.76, 1.32, 1.02);
+  whipAntenna.rotation.x = -0.18;
+  group.add(windshield, rearGlass, sideGlass, whipAntenna);
+
+  // Chrome wrap-around front & rear bumpers + bumperette overriders
   const makeBumper = (zPos: number, dir: number) => {
     const curve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-0.88, 0.37, zPos - dir * 0.24),
@@ -3734,44 +4590,110 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
     ]);
     const bar = new THREE.Mesh(
       new THREE.TubeGeometry(curve, 16, 0.062, 8, false),
-      materials.grimeMetal
+      chromeTrimMat
     );
     bar.castShadow = true;
     group.add(bar);
+    for (const bx of [-0.46, 0.46]) {
+      const overrider = new THREE.Mesh(
+        createBeveledBoxGeo(0.065, 0.18, 0.09, 0.015, 0.006),
+        chromeTrimMat
+      );
+      overrider.position.set(bx, 0.4, zPos + dir * 0.03);
+      group.add(overrider);
+    }
   };
   makeBumper(2.1, 1);
   makeBumper(-2.1, -1);
 
-  // Ribbed chrome radiator grille + hood chrome strip
-  const grille = new THREE.Mesh(
-    createBeveledBoxGeo(1.06, 0.24, 0.06, 0.03, 0.012),
-    materials.grimeMetal
+  // Slatted horizontal chrome Moskvitch-412 grille + crimson AZLK badge
+  const grilleRecess = new THREE.Mesh(
+    createBeveledBoxGeo(1.04, 0.23, 0.04, 0.02, 0.008),
+    interiorMat
   );
-  grille.position.set(0, 0.64, 2.04);
-  group.add(grille);
+  grilleRecess.position.set(0, 0.64, 2.035);
+  group.add(grilleRecess);
+  for (let slat = -2; slat <= 2; slat++) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.015, 0.032), chromeTrimMat);
+    bar.position.set(0, 0.64 + slat * 0.044, 2.055);
+    group.add(bar);
+  }
+  const azlkBadge = new THREE.Mesh(
+    createBeveledBoxGeo(0.09, 0.11, 0.03, 0.012, 0.005),
+    new THREE.MeshPhysicalMaterial({ color: 0xa61d1d, roughness: 0.22, clearcoat: 0.9 })
+  );
+  azlkBadge.position.set(0, 0.65, 2.068);
+  group.add(azlkBadge);
 
-  // Iconic Soviet round chrome-bezeled headlights + glowing glass lenses & rear tail clusters
-  const headlightMat = new THREE.MeshStandardMaterial({
-    color: 0xffe4a8,
+  // Authentic 1994 Soviet black-on-white license plates ("41-94 ММО") front & rear
+  const plateCanvas = document.createElement('canvas');
+  plateCanvas.width = 256;
+  plateCanvas.height = 64;
+  const plCtx = plateCanvas.getContext('2d')!;
+  plCtx.fillStyle = '#15171c';
+  plCtx.fillRect(0, 0, 256, 64);
+  plCtx.strokeStyle = '#d4d8df';
+  plCtx.lineWidth = 4;
+  plCtx.strokeRect(4, 4, 248, 56);
+  plCtx.fillStyle = '#eceee8';
+  plCtx.font = 'bold 34px monospace';
+  plCtx.textAlign = 'center';
+  plCtx.textBaseline = 'middle';
+  plCtx.fillText('41-94 ММО', 128, 34);
+  const plateTex = new THREE.CanvasTexture(plateCanvas);
+  plateTex.colorSpace = THREE.SRGBColorSpace;
+  const plateMat = new THREE.MeshStandardMaterial({ map: plateTex, roughness: 0.42, metalness: 0.35 });
+  const frontPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.12), plateMat);
+  frontPlate.position.set(0, 0.45, 2.13);
+  const rearPlate = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.12), plateMat);
+  rearPlate.rotation.y = Math.PI;
+  rearPlate.position.set(0, 0.56, -2.065);
+  group.add(frontPlate, rearPlate);
+
+  // Rear chrome exhaust tailpipe tucked under rear bumper
+  const exhaustPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.42, 10), chromeTrimMat);
+  exhaustPipe.rotation.x = Math.PI / 2;
+  exhaustPipe.position.set(-0.56, 0.24, -2.04);
+  group.add(exhaustPipe);
+
+  // Iconic Soviet round chrome-bezeled headlights, amber turn signals & rear tail clusters
+  const headlightMat = new THREE.MeshPhysicalMaterial({
+    color: 0xfff0c4,
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
-    emissive: 0xffb85c,
-    emissiveIntensity: 3.6,
-    roughness: 0.18,
+    emissive: 0xffc066,
+    emissiveIntensity: 4.2,
+    roughness: 0.12,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.06,
   });
-  const taillightMat = new THREE.MeshStandardMaterial({
-    color: 0xff4242,
+  const amberSignalMat = new THREE.MeshPhysicalMaterial({
+    color: 0xff8c24,
+    emissive: 0xd96410,
+    emissiveIntensity: 1.4,
+    roughness: 0.18,
+    clearcoat: 0.9,
+  });
+  const taillightMat = new THREE.MeshPhysicalMaterial({
+    color: 0xff3b3b,
     map: materials.frostedGlass.map,
-    emissive: 0xc92424,
-    emissiveIntensity: 2.3,
-    roughness: 0.25,
+    emissive: 0xd92222,
+    emissiveIntensity: 2.8,
+    roughness: 0.18,
+    clearcoat: 0.95,
   });
   for (const side of [-0.62, 0.62]) {
-    const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.022, 8, 16), materials.grimeMetal);
+    const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.115, 0.022, 8, 16), chromeTrimMat);
     bezel.position.set(side, 0.66, 2.055);
     const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.04, 14), headlightMat);
     lens.rotation.x = Math.PI / 2;
     lens.position.set(side, 0.66, 2.045);
+
+    const blinker = new THREE.Mesh(
+      createBeveledBoxGeo(0.14, 0.055, 0.045, 0.012, 0.006),
+      amberSignalMat
+    );
+    blinker.position.set(side, 0.51, 2.045);
 
     const tl = new THREE.Mesh(
       createBeveledBoxGeo(0.24, 0.14, 0.06, 0.025, 0.01),
@@ -3779,29 +4701,32 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
     );
     tl.position.set(side, 0.66, -2.05);
 
-    // Chrome wing side mirrors & door handles
-    const mirrorArm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 6), materials.grimeMetal);
+    // Chrome wing side mirrors, roof drip rails & door handles
+    const mirrorArm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 6), chromeTrimMat);
     mirrorArm.rotation.z = side > 0 ? -0.9 : 0.9;
     mirrorArm.position.set(side * 1.38, 0.98, 0.56);
     const mirrorHead = new THREE.Mesh(
       createBeveledBoxGeo(0.13, 0.085, 0.05, 0.02, 0.008),
-      materials.grimeMetal
+      chromeTrimMat
     );
     mirrorHead.position.set(side * 1.48, 1.02, 0.54);
 
     const doorHandle = new THREE.Mesh(
       createBeveledBoxGeo(0.03, 0.026, 0.14, 0.006, 0.004),
-      materials.grimeMetal
+      chromeTrimMat
     );
     doorHandle.position.set(side * 1.37, 0.82, -0.15);
 
-    group.add(bezel, lens, tl, mirrorArm, mirrorHead, doorHandle);
+    const dripRail = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.022, 1.42), chromeTrimMat);
+    dripRail.position.set(side * 1.32, 1.36, -0.26);
+
+    group.add(bezel, lens, blinker, tl, mirrorArm, mirrorHead, doorHandle, dripRail);
   }
 
-  // 4 treaded rubber wheels with flared wheel-arch trim & domed chrome Soviet hubcaps
-  const tireGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.23, 18);
+  // 4 treaded rubber wheels with flared wheel-arch trim, domed chrome hubcaps & 5 lug bolts
+  const tireGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.23, 20);
   tireGeo.rotateZ(Math.PI / 2);
-  const rimGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.245, 14);
+  const rimGeo = new THREE.CylinderGeometry(0.21, 0.21, 0.245, 16);
   rimGeo.rotateZ(Math.PI / 2);
   const hubGeo = new THREE.SphereGeometry(0.135, 12, 8);
   hubGeo.scale(0.55, 1, 1);
@@ -3816,9 +4741,9 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
     const tire = new THREE.Mesh(tireGeo, materials.tireRubber);
     tire.position.set(wx, 0.34, wz);
     tire.castShadow = true;
-    const rim = new THREE.Mesh(rimGeo, materials.grimeMetal);
+    const rim = new THREE.Mesh(rimGeo, chromeTrimMat);
     rim.position.set(wx, 0.34, wz);
-    const hub = new THREE.Mesh(hubGeo, materials.grimeMetal);
+    const hub = new THREE.Mesh(hubGeo, chromeTrimMat);
     hub.position.set(wx + (wx > 0 ? 0.095 : -0.095), 0.34, wz);
     const arch = new THREE.Mesh(
       new THREE.TorusGeometry(0.39, 0.035, 6, 14, Math.PI),
@@ -3829,23 +4754,72 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
     group.add(tire, rim, hub, arch);
   }
 
-  // Warm road headlight wash projected onto wet asphalt ahead of the car
+  // Dual volumetric headlight beam cones: narrow apex flush on headlamp lens, expanding cleanly FORWARD (+Z)
+  // CylinderGeometry(radiusTop=+Y, radiusBottom=-Y): after translate(+3.2) and rotateX(+PI/2), +Y maps to +Z!
+  const beamConeGeo = new THREE.CylinderGeometry(1.32, 0.11, 6.4, 22, 1, true);
+  beamConeGeo.translate(0, 3.2, 0);
+  beamConeGeo.rotateX(Math.PI / 2);
+  const beamConeMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(0xffd796) },
+      uOpacity: { value: 0.16 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      void main() {
+        vUv = uv;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vNormalView = normalize(normalMatrix * normal);
+        vViewDir = normalize(-mvPos.xyz);
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      void main() {
+        // vUv.y = 0 at narrow headlamp lens, 1 at far wide mouth
+        float fresnel = pow(abs(dot(normalize(vNormalView), normalize(vViewDir))), 2.1);
+        float nearFade = smoothstep(0.0, 0.08, vUv.y);
+        float farFade = pow(clamp(1.0 - vUv.y, 0.0, 1.0), 1.85);
+        float alpha = fresnel * nearFade * farFade * uOpacity;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  });
+  for (const side of [-0.62, 0.62]) {
+    const cone = new THREE.Mesh(beamConeGeo, beamConeMat);
+    cone.position.set(side, 0.66, 2.04);
+    cone.rotation.x = 0.075;
+    group.add(cone);
+  }
+
+  // Warm soft road headlight wash projected onto wet asphalt ahead of the car
   const poolCanvas = document.createElement('canvas');
   poolCanvas.width = 128;
   poolCanvas.height = 128;
   const pctx = poolCanvas.getContext('2d')!;
   const pgrad = pctx.createRadialGradient(64, 24, 4, 64, 64, 62);
-  pgrad.addColorStop(0, 'rgba(255, 210, 130, 0.34)');
+  pgrad.addColorStop(0, 'rgba(255, 215, 138, 0.34)');
   pgrad.addColorStop(0.55, 'rgba(232, 150, 62, 0.12)');
   pgrad.addColorStop(1, 'rgba(232, 150, 62, 0)');
   pctx.fillStyle = pgrad;
   pctx.fillRect(0, 0, 128, 128);
   const beamPool = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.2, 7.6),
+    new THREE.PlaneGeometry(4.4, 7.6),
     new THREE.MeshBasicMaterial({
       map: new THREE.CanvasTexture(poolCanvas),
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.42,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     })
@@ -3985,8 +4959,8 @@ export function createSuburbSign(materials: WorldMaterialSet): THREE.Group {
 }
 
 /**
- * Organic sculpted spruce bough whorl — displaces a subdivided cone into irregular
- * drooping branch lobes so background pines never read as smooth geometric cones.
+ * Organic sculpted spruce bough whorl — heavily serrated drooping Russian spruce branches
+ * with asymmetric multi-lobe silhouette so northern pines never look like smooth cones.
  */
 export function createSculptedSpruceTierGeo(
   radius: number,
@@ -3994,27 +4968,36 @@ export function createSculptedSpruceTierGeo(
   yOffset: number,
   seed: number
 ): THREE.BufferGeometry {
-  const geo = new THREE.ConeGeometry(radius, height, 11, 4, false);
+  const geo = new THREE.ConeGeometry(radius, height, 18, 6, false);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();
 
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     const r = Math.hypot(v.x, v.z);
+    const hNorm = Math.max(0, Math.min(1, (v.y + height * 0.5) / height));
     if (r > 0.04) {
       const ang = Math.atan2(v.z, v.x);
-      // Normalized height 0 at bottom rim, 1 at apex
-      const hNorm = Math.max(0, Math.min(1, (v.y + height * 0.5) / height));
       const boughLobe =
-        0.82 +
-        0.24 * Math.sin(ang * 5 + seed * 1.7) +
-        0.13 * Math.cos(ang * 3 - seed * 2.3);
-      const radialJitter = 1 + (1 - hNorm) * (boughLobe - 1);
+        0.74 +
+        0.3 * Math.sin(ang * 6 + seed * 1.7) +
+        0.18 * Math.cos(ang * 4 - seed * 2.3) +
+        0.12 * Math.sin(ang * 9 + hNorm * 5.2 + seed);
+      const tierStep = 1 + 0.16 * Math.sin(hNorm * Math.PI * 3.0);
+      // Break up sharp geometric cone tips with organic upper-crown irregularity
+      const crownSoft = hNorm > 0.72 ? 1.18 + 0.25 * Math.sin(ang * 5 + seed * 2.1) : 1.0;
+      const radialJitter = (1 + (1 - hNorm) * (boughLobe - 1)) * tierStep * crownSoft;
       v.x *= radialJitter;
       v.z *= radialJitter;
-      // Droop lower bough tips naturally under night rain weight
-      const droop = (1 - hNorm) * (1 - hNorm) * (0.28 + 0.16 * Math.sin(ang * 5 + seed));
-      v.y -= droop * radius * 0.22;
+      // Heavy rain-weighted downward sweep at bough tips
+      const droop =
+        (1 - hNorm) * (1 - hNorm) * (0.38 + 0.24 * Math.sin(ang * 6 + seed));
+      v.y -= droop * radius * 0.3;
+    } else if (hNorm > 0.9) {
+      // Slightly blunt/asymmetrical natural pine leader tip instead of razor-sharp triangle point
+      v.y -= height * 0.06;
+      v.x += Math.sin(seed * 3.1) * 0.16;
+      v.z += Math.cos(seed * 2.7) * 0.14;
     }
     v.y += yOffset;
     pos.setXYZ(i, v.x, v.y, v.z);
@@ -4033,7 +5016,7 @@ export function createFlaredTrunkGeo(
   bottomRadius: number,
   height: number
 ): THREE.BufferGeometry {
-  const geo = new THREE.CylinderGeometry(topRadius, bottomRadius, height, 8, 5);
+  const geo = new THREE.CylinderGeometry(topRadius, bottomRadius, height, 10, 6);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();
 
@@ -4041,11 +5024,10 @@ export function createFlaredTrunkGeo(
     v.fromBufferAttribute(pos, i);
     const hNorm = (v.y + height * 0.5) / height; // 0 bottom .. 1 top
     const ang = Math.atan2(v.z, v.x);
-    // Root buttress flare near ground
-    const rootFlare = hNorm < 0.25 ? 1 + (1 - hNorm / 0.25) * (0.38 + 0.18 * Math.sin(ang * 4)) : 1;
-    // Slight natural S-curve crook
-    const bendX = Math.sin(hNorm * Math.PI) * 0.09;
-    const bendZ = Math.cos(hNorm * Math.PI * 1.3) * 0.05;
+    const rootFlare =
+      hNorm < 0.28 ? 1 + (1 - hNorm / 0.28) * (0.44 + 0.22 * Math.sin(ang * 5)) : 1;
+    const bendX = Math.sin(hNorm * Math.PI) * 0.11;
+    const bendZ = Math.cos(hNorm * Math.PI * 1.3) * 0.06;
     v.x = v.x * rootFlare + bendX;
     v.z = v.z * rootFlare + bendZ;
     v.y += height * 0.5;
@@ -4061,7 +5043,7 @@ export function createFlaredTrunkGeo(
  * Irregular leafy crown cluster for Russian silver birches mixed into Negruzino's perimeter.
  */
 export function createBirchCanopyGeo(): THREE.BufferGeometry {
-  const geo = new THREE.IcosahedronGeometry(1.95, 2);
+  const geo = new THREE.IcosahedronGeometry(2.12, 2);
   const pos = geo.attributes.position as THREE.BufferAttribute;
   const v = new THREE.Vector3();
 
@@ -4069,12 +5051,13 @@ export function createBirchCanopyGeo(): THREE.BufferGeometry {
     v.fromBufferAttribute(pos, i);
     const ang = Math.atan2(v.z, v.x);
     const lump =
-      0.86 +
-      0.22 * Math.sin(ang * 3.0 + v.y * 1.4) +
-      0.14 * Math.cos(v.x * 1.9 - v.z * 1.6);
-    v.x *= lump * 0.92;
-    v.z *= lump * 0.92;
-    v.y = v.y * lump * 1.28 + 5.8;
+      0.82 +
+      0.26 * Math.sin(ang * 3.0 + v.y * 1.6) +
+      0.16 * Math.cos(v.x * 2.2 - v.z * 1.8) +
+      0.1 * Math.sin(ang * 5.0 - v.y * 2.4);
+    v.x *= lump * 0.94;
+    v.z *= lump * 0.94;
+    v.y = v.y * lump * 1.32 + 5.95;
     pos.setXYZ(i, v.x, v.y, v.z);
   }
 
@@ -4114,4 +5097,602 @@ export function createRoadStormDrain(materials: WorldMaterialSet): THREE.Group {
   group.add(frame, pit);
   return group;
 }
+
+/**
+ * Instanced multi-blade wild roadside grass tuft cluster for curb, fence, and verge realism.
+ */
+export function createGrassTuftGeo(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  const bladeCount = 7;
+  let vertOffset = 0;
+  for (let b = 0; b < bladeCount; b++) {
+    const ang = (b / bladeCount) * Math.PI * 2 + (b % 2) * 0.31;
+    const h = 0.28 + (b % 3) * 0.11;
+    const w = 0.048;
+    const lean = 0.1 + (b % 2) * 0.08;
+    const ox = Math.cos(ang) * 0.07;
+    const oz = Math.sin(ang) * 0.07;
+    const tx = -Math.sin(ang) * w;
+    const tz = Math.cos(ang) * w;
+    const lx = Math.cos(ang) * lean;
+    const lz = Math.sin(ang) * lean;
+
+    // 5-vertex curved tapering blade
+    const pts = [
+      [ox - tx, 0, oz - tz, 0, 0],
+      [ox + tx, 0, oz + tz, 1, 0],
+      [ox - tx * 0.65 + lx * 0.45, h * 0.52, oz - tz * 0.65 + lz * 0.45, 0, 0.5],
+      [ox + tx * 0.65 + lx * 0.45, h * 0.52, oz + tz * 0.65 + lz * 0.45, 1, 0.5],
+      [ox + lx, h, oz + lz, 0.5, 1],
+    ];
+    for (const [px, py, pz, u, v] of pts) {
+      positions.push(px, py, pz);
+      normals.push(Math.cos(ang) * 0.3, 0.92, Math.sin(ang) * 0.3);
+      uvs.push(u, v);
+    }
+    indices.push(
+      vertOffset,
+      vertOffset + 1,
+      vertOffset + 2,
+      vertOffset + 1,
+      vertOffset + 3,
+      vertOffset + 2,
+      vertOffset + 2,
+      vertOffset + 3,
+      vertOffset + 4
+    );
+    vertOffset += 5;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setAttribute('uv2', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Sculpted organic suburban yard shrub cluster (for instanced hedges along fences & gardens).
+ */
+export function createYardBushGeo(): THREE.BufferGeometry {
+  const geo = new THREE.IcosahedronGeometry(0.72, 2);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const ang = Math.atan2(v.z, v.x);
+    const lobe =
+      0.86 +
+      0.22 * Math.sin(ang * 4.0 + v.y * 2.5) +
+      0.14 * Math.cos(v.x * 3.1 - v.z * 2.8);
+    v.x *= lobe * 1.18;
+    v.z *= lobe * 1.12;
+    v.y = Math.max(0.02, v.y * lobe * 0.82 + 0.44);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  geo.setAttribute('uv2', geo.attributes.uv.clone());
+  return geo;
+}
+
+/**
+ * Classic 1994 Soviet roadside concrete signal bollard ("сигнальный столбик") with diagonal
+ * black-and-white warning stripe and glowing cat's-eye road reflector.
+ */
+export function createRoadsideBollard(materials: WorldMaterialSet): THREE.Group {
+  const group = new THREE.Group();
+
+  const post = new THREE.Mesh(
+    createBeveledBoxGeo(0.14, 0.78, 0.14, 0.02, 0.008, 0.75),
+    materials.concrete
+  );
+  post.position.y = 0.39;
+  post.castShadow = true;
+  post.receiveShadow = true;
+  group.add(post);
+
+  const blackBand = new THREE.Mesh(
+    new THREE.BoxGeometry(0.146, 0.16, 0.146),
+    new THREE.MeshStandardMaterial({ color: 0x15181d, roughness: 0.78 })
+  );
+  blackBand.position.y = 0.62;
+  group.add(blackBand);
+
+  const reflectorMat = new THREE.MeshPhysicalMaterial({
+    color: 0xff3a24,
+    emissive: 0xd92616,
+    emissiveIntensity: 1.65,
+    roughness: 0.14,
+    clearcoat: 1.0,
+  });
+  for (const dz of [-0.074, 0.074]) {
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.055, 0.012), reflectorMat);
+    eye.position.set(0, 0.62, dz);
+    group.add(eye);
+  }
+
+  return group;
+}
+
+/**
+ * Weathered 200L Soviet ribbed steel barrel ("бочка") with rolled hoops and top bung caps.
+ */
+export function createRustBarrel(materials: WorldMaterialSet): THREE.Group {
+  const group = new THREE.Group();
+
+  const drumGeo = createLatheProfileGeo(
+    [
+      [0.01, 0.0],
+      [0.29, 0.0],
+      [0.3, 0.04],
+      [0.29, 0.28],
+      [0.315, 0.31],
+      [0.29, 0.34],
+      [0.29, 0.56],
+      [0.315, 0.59],
+      [0.29, 0.62],
+      [0.3, 0.87],
+      [0.285, 0.9],
+      [0.26, 0.87],
+      [0.01, 0.87],
+    ],
+    18
+  );
+  const drum = new THREE.Mesh(drumGeo, materials.grimeMetal);
+  drum.castShadow = true;
+  drum.receiveShadow = true;
+  group.add(drum);
+
+  const bungA = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.025, 10), materials.concrete);
+  bungA.position.set(0.11, 0.882, 0.05);
+  const bungB = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.022, 8), materials.concrete);
+  bungB.position.set(-0.12, 0.88, -0.06);
+  group.add(bungA, bungB);
+
+  return group;
+}
+
+export interface CoopPartnerRig {
+  group: THREE.Group;
+  bodyPivot: THREE.Group;
+  headPivot: THREE.Group;
+  leftLeg: THREE.Group;
+  rightLeg: THREE.Group;
+  leftArm: THREE.Group;
+  rightArm: THREE.Group;
+  weaponPivot: THREE.Group;
+  weaponMag: THREE.Mesh;
+  muzzleFlash: THREE.Mesh;
+  nameSprite: THREE.Sprite;
+  setWeapon: (weaponId: WeaponId) => void;
+  updateLabel: (name: string, hp: number, maxHp: number, isDowned: boolean) => void;
+}
+
+/**
+ * High-detail 3D LAN Co-op Partner Survivor Avatar:
+ * Weathered 1994 Soviet storm-parka, winter ushanka with earflaps, tactical scarf,
+ * articulated legs/arms, held rifle silhouette, glowing muzzle flash, and crisp overhead callsign/HP badge.
+ */
+export function createCoopPartnerModel(
+  shadowTex: THREE.CanvasTexture,
+  initialName: string
+): CoopPartnerRig {
+  const group = new THREE.Group();
+  const bodyPivot = new THREE.Group();
+  bodyPivot.position.y = 0.96;
+  group.add(bodyPivot);
+
+  const parkaMat = new THREE.MeshPhysicalMaterial({
+    color: 0x3b4d3e,
+    roughness: 0.78,
+    metalness: 0.06,
+    sheen: 0.45,
+    sheenColor: new THREE.Color(0x6f826f),
+  });
+  const trousersMat = new THREE.MeshStandardMaterial({
+    color: 0x242a34,
+    roughness: 0.86,
+    metalness: 0.05,
+  });
+  const leatherMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1715,
+    roughness: 0.54,
+    metalness: 0.14,
+  });
+  const scarfMat = new THREE.MeshStandardMaterial({
+    color: 0x9c4527,
+    roughness: 0.88,
+  });
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xc9a389,
+    roughness: 0.62,
+  });
+  const ushankaMat = new THREE.MeshStandardMaterial({
+    color: 0x2f2822,
+    roughness: 0.92,
+  });
+  const steelMat = new THREE.MeshStandardMaterial({
+    color: 0x2d333d,
+    roughness: 0.36,
+    metalness: 0.82,
+  });
+  const lampGlowMat = new THREE.MeshStandardMaterial({
+    color: 0xffd28a,
+    emissive: 0xffa63d,
+    emissiveIntensity: 2.8,
+    roughness: 0.2,
+  });
+
+  // Sculpted torso parka + storm collar + backpack
+  const torso = new THREE.Mesh(
+    createLatheProfileGeo(
+      [
+        [0.19, -0.26],
+        [0.24, -0.05],
+        [0.26, 0.2],
+        [0.22, 0.44],
+        [0.14, 0.52],
+      ],
+      14
+    ),
+    parkaMat
+  );
+  torso.scale.set(1.05, 1.0, 0.78);
+  torso.castShadow = true;
+  torso.receiveShadow = true;
+  bodyPivot.add(torso);
+
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.042, 8, 16), scarfMat);
+  scarf.rotation.x = Math.PI / 2;
+  scarf.position.y = 0.51;
+  bodyPivot.add(scarf);
+
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.065, 14), leatherMat);
+  belt.scale.set(1.05, 1.0, 0.8);
+  belt.position.y = -0.04;
+  bodyPivot.add(belt);
+
+  const backpack = new THREE.Mesh(
+    createBeveledBoxGeo(0.32, 0.42, 0.16, 0.045, 0.02, 0.3),
+    leatherMat
+  );
+  backpack.position.set(0, 0.22, 0.23);
+  backpack.castShadow = true;
+  bodyPivot.add(backpack);
+
+  // Articulated Head + 1994 Soviet Ushanka + Headlamp
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 0.58, 0);
+  bodyPivot.add(headPivot);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 12), skinMat);
+  head.scale.set(0.92, 1.04, 0.96);
+  head.position.y = 0.11;
+  head.castShadow = true;
+  headPivot.add(head);
+
+  const hatCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.158, 0.155, 0.14, 14), ushankaMat);
+  hatCrown.position.y = 0.21;
+  hatCrown.castShadow = true;
+  headPivot.add(hatCrown);
+
+  for (const side of [-1, 1]) {
+    const earFlap = new THREE.Mesh(
+      createBeveledBoxGeo(0.055, 0.15, 0.11, 0.015, 0.008, 0.2),
+      ushankaMat
+    );
+    earFlap.position.set(side * 0.145, 0.12, 0.01);
+    earFlap.rotation.z = -side * 0.14;
+    headPivot.add(earFlap);
+  }
+
+  const headlamp = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.04, 10), lampGlowMat);
+  headlamp.rotation.x = Math.PI / 2;
+  headlamp.position.set(0, 0.21, -0.155);
+  headPivot.add(headlamp);
+
+  // Articulated Legs
+  const makeLeg = (side: -1 | 1) => {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.13, -0.12, 0);
+    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.088, 0.32, 6, 10), trousersMat);
+    thigh.position.y = -0.22;
+    thigh.castShadow = true;
+    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, 0.3, 6, 10), trousersMat);
+    shin.position.y = -0.56;
+    shin.castShadow = true;
+    const boot = new THREE.Mesh(
+      createBeveledBoxGeo(0.13, 0.14, 0.26, 0.03, 0.015, 0.2),
+      leatherMat
+    );
+    boot.position.set(0, -0.77, -0.045);
+    boot.castShadow = true;
+    hip.add(thigh, shin, boot);
+    return hip;
+  };
+  const leftLeg = makeLeg(-1);
+  const rightLeg = makeLeg(1);
+  bodyPivot.add(leftLeg, rightLeg);
+
+  // Articulated Arms + Held Carbine Silhouette + Muzzle Flash
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-0.29, 0.42, -0.02);
+  const leftSleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, 0.38, 6, 10), parkaMat);
+  leftSleeve.position.set(0.04, -0.12, -0.18);
+  leftSleeve.rotation.set(Math.PI * 0.38, 0, 0.28);
+  leftSleeve.castShadow = true;
+  leftArm.add(leftSleeve);
+  bodyPivot.add(leftArm);
+
+  const rightArm = new THREE.Group();
+  rightArm.position.set(0.28, 0.42, -0.02);
+  const rightSleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, 0.36, 6, 10), parkaMat);
+  rightSleeve.position.set(-0.02, -0.12, -0.16);
+  rightSleeve.rotation.set(Math.PI * 0.42, 0, -0.18);
+  rightSleeve.castShadow = true;
+  rightArm.add(rightSleeve);
+
+  const weaponPivot = new THREE.Group();
+  weaponPivot.position.set(-0.06, -0.155, -0.34);
+  const gunBody = new THREE.Mesh(
+    createBeveledBoxGeo(0.068, 0.095, 0.48, 0.014, 0.008, 0.25),
+    steelMat
+  );
+  const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.44, 10), steelMat);
+  gunBarrel.rotation.x = Math.PI / 2;
+  gunBarrel.position.set(0, 0.012, -0.34);
+  const weaponMag = new THREE.Mesh(
+    createBeveledBoxGeo(0.044, 0.14, 0.085, 0.008, 0.004, 0.2),
+    leatherMat
+  );
+  weaponMag.position.set(0, -0.095, -0.06);
+  const muzzleFlash = new THREE.Mesh(
+    new THREE.ConeGeometry(0.11, 0.32, 7),
+    new THREE.MeshBasicMaterial({
+      color: 0xffc66b,
+      transparent: true,
+      opacity: 0.92,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+  );
+  muzzleFlash.rotation.x = -Math.PI / 2;
+  muzzleFlash.position.set(0, 0.012, -0.62);
+  muzzleFlash.visible = false;
+  weaponPivot.add(gunBody, gunBarrel, weaponMag, muzzleFlash);
+  rightArm.add(weaponPivot);
+  bodyPivot.add(rightArm);
+
+  let currentWeaponVisual: WeaponId = 'shotgun';
+  const setWeapon = (weaponId: WeaponId) => {
+    if (weaponId === currentWeaponVisual) return;
+    currentWeaponVisual = weaponId;
+    if (weaponId === 'pistol') {
+      gunBody.scale.set(0.76, 0.72, 0.56);
+      gunBarrel.scale.set(0.8, 0.48, 0.8);
+      gunBarrel.position.z = -0.19;
+      weaponMag.scale.set(0.7, 0.75, 0.7);
+      muzzleFlash.position.z = -0.35;
+    } else if (weaponId === 'awp') {
+      gunBody.scale.set(0.95, 0.95, 1.15);
+      gunBarrel.scale.set(0.85, 1.48, 0.85);
+      gunBarrel.position.z = -0.49;
+      weaponMag.scale.set(0.95, 0.95, 1.0);
+      muzzleFlash.position.z = -0.84;
+    } else if (weaponId === 'minigun') {
+      gunBody.scale.set(1.65, 1.55, 1.15);
+      gunBarrel.scale.set(2.3, 1.35, 2.3);
+      gunBarrel.position.z = -0.46;
+      weaponMag.scale.set(1.8, 1.25, 1.8);
+      muzzleFlash.position.z = -0.82;
+    } else if (weaponId === 'p90') {
+      gunBody.scale.set(0.9, 1.12, 0.84);
+      gunBarrel.scale.set(0.82, 0.55, 0.82);
+      gunBarrel.position.z = -0.24;
+      weaponMag.scale.set(0.9, 0.45, 2.4);
+      muzzleFlash.position.z = -0.44;
+    } else {
+      gunBody.scale.set(1, 1, 1);
+      gunBarrel.scale.set(1, 1, 1);
+      gunBarrel.position.z = -0.34;
+      weaponMag.scale.set(1, 1, 1);
+      muzzleFlash.position.z = -0.62;
+    }
+  };
+
+  // Soft ground shadow disc
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.55, 16),
+    new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+    })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.036;
+  group.add(shadow);
+
+  // Dynamic Callsign + HP Canvas Sprite overhead (safe canvas fillText, zero HTML)
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = 320;
+  labelCanvas.height = 84;
+  const lctx = labelCanvas.getContext('2d')!;
+  const labelTex = new THREE.CanvasTexture(labelCanvas);
+  labelTex.colorSpace = THREE.SRGBColorSpace;
+  const nameSprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: labelTex,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    })
+  );
+  nameSprite.scale.set(0.76, 0.21, 1);
+  nameSprite.position.y = 2.08;
+  group.add(nameSprite);
+
+  const updateLabel = (name: string, hp: number, maxHp: number, isDowned: boolean) => {
+    lctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+    lctx.fillStyle = isDowned ? 'rgba(130, 24, 28, 0.86)' : 'rgba(12, 18, 28, 0.82)';
+    lctx.fillRect(14, 8, 292, 66);
+    lctx.strokeStyle = isDowned ? '#ff6464' : '#e8963a';
+    lctx.lineWidth = 3;
+    lctx.strokeRect(14, 8, 292, 66);
+
+    lctx.fillStyle = isDowned ? '#ffd0d0' : '#f4efe6';
+    lctx.font = 'bold 26px monospace';
+    lctx.textAlign = 'center';
+    lctx.fillText(isDowned ? `${name} · РАНЕН!` : name, 160, 40);
+
+    // HP bar
+    const ratio = Math.max(0, Math.min(1, maxHp > 0 ? hp / maxHp : 0));
+    lctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    lctx.fillRect(36, 52, 248, 11);
+    lctx.fillStyle = isDowned ? '#ef4444' : ratio > 0.45 ? '#5fa88e' : '#e8963a';
+    lctx.fillRect(36, 52, Math.round(248 * ratio), 11);
+    labelTex.needsUpdate = true;
+  };
+  updateLabel(initialName, 100, 100, false);
+
+  // Bullets pass cleanly through co-op teammates (zero friendly fire frustration)
+  group.traverse((obj) => {
+    obj.userData.ignoreBulletRaycast = true;
+  });
+
+  return {
+    group,
+    bodyPivot,
+    headPivot,
+    leftLeg,
+    rightLeg,
+    leftArm,
+    rightArm,
+    weaponPivot,
+    weaponMag,
+    muzzleFlash,
+    nameSprite,
+    setWeapon,
+    updateLabel,
+  };
+}
+
+/**
+ * Collectible 1994 Soviet MK-60 Magnetic Cassette Tape resting on a weathered wooden crate
+ * with subtle amber tape-reel glow so players can discover lore entries around Negruzino.
+ */
+export function createCassetteTapeModel(materials: WorldMaterialSet): {
+  group: THREE.Group;
+  spinPivot: THREE.Group;
+  ringMesh: THREE.Mesh;
+} {
+  const group = new THREE.Group();
+
+  const crate = new THREE.Mesh(
+    createBeveledBoxGeo(0.56, 0.44, 0.46, 0.04, 0.02, 0.45),
+    materials.fence
+  );
+  crate.position.y = 0.22;
+  crate.castShadow = true;
+  crate.receiveShadow = true;
+  group.add(crate);
+
+  const spinPivot = new THREE.Group();
+  spinPivot.position.y = 0.72;
+  group.add(spinPivot);
+
+  const shellMat = new THREE.MeshPhysicalMaterial({
+    color: 0x1a1e26,
+    roughness: 0.36,
+    metalness: 0.25,
+    clearcoat: 0.45,
+  });
+  const labelMat = new THREE.MeshStandardMaterial({
+    color: 0xf0a64b,
+    emissive: 0xe08224,
+    emissiveIntensity: 1.45,
+    roughness: 0.32,
+  });
+  const reelMat = new THREE.MeshStandardMaterial({
+    color: 0xebe4d4,
+    emissive: 0xffb85c,
+    emissiveIntensity: 0.9,
+    roughness: 0.25,
+  });
+
+  const body = new THREE.Mesh(
+    createBeveledBoxGeo(0.36, 0.23, 0.052, 0.018, 0.008, 0.25),
+    shellMat
+  );
+  body.castShadow = true;
+  const stripe = new THREE.Mesh(
+    createBeveledBoxGeo(0.31, 0.095, 0.058, 0.01, 0.004, 0.2),
+    labelMat
+  );
+  stripe.position.y = 0.04;
+  spinPivot.add(body, stripe);
+
+  for (const sx of [-0.085, 0.085]) {
+    const reel = new THREE.Mesh(new THREE.TorusGeometry(0.036, 0.011, 6, 14), reelMat);
+    reel.position.set(sx, -0.02, 0.028);
+    const reelBack = reel.clone();
+    reelBack.position.z = -0.028;
+    spinPivot.add(reel, reelBack);
+  }
+
+  const ringMesh = new THREE.Mesh(
+    new THREE.RingGeometry(0.42, 0.56, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xf4aa4c,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  ringMesh.rotation.x = -Math.PI / 2;
+  ringMesh.position.y = 0.042;
+  group.add(ringMesh);
+
+  group.traverse((obj) => {
+    obj.userData.ignoreBulletRaycast = true;
+  });
+
+  return { group, spinPivot, ringMesh };
+}
+
+/**
+ * 3D Amber Radio Ping Pillar spawned when a LAN co-op teammate presses [G].
+ */
+export function createCoopPingBeacon(): THREE.Group {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x6ce5c4,
+    transparent: true,
+    opacity: 0.45,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.32, 9.0, 12, 1, true), mat);
+  pillar.position.y = 4.5;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.78, 20), mat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  group.add(pillar, ring);
+  group.traverse((o) => {
+    o.userData.ignoreBulletRaycast = true;
+  });
+  return group;
+}
+
 

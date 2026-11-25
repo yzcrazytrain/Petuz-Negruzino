@@ -1,4 +1,15 @@
 import { ASSET_PATHS } from './constants';
+import {
+  EXTRA_CHAPTER_META_EN,
+  EXTRA_CHAPTER_META_RU,
+  EXTRA_OBJECTIVE_LABELS_EN,
+  EXTRA_OBJECTIVE_LABELS_RU,
+  EXTRA_STORY_LOGS_EN,
+  EXTRA_STORY_LOGS_RU,
+  EXTRA_STORY_TAPES_EN,
+  EXTRA_STORY_TAPES_RU,
+  ZONE_NAMES,
+} from './campaign';
 import type {
   BindableAction,
   CutsceneDef,
@@ -12,6 +23,7 @@ import type {
   TextureSlot,
   UpgradeId,
   WeaponId,
+  ZoneId,
 } from './types';
 
 export const LANG_STORAGE_KEY = 'negruzino_language';
@@ -117,6 +129,19 @@ export function localizeRoosterCopy(
   return text.replace(/GRISHA/g, 'VANYA').replace(/Grisha/g, 'Vanya');
 }
 
+/**
+ * Strips PC keyboard/mouse shortcut hints like [E], [F], [L], [N], [R], [1–3], (N)
+ * from UI text when running on touch/mobile devices.
+ */
+export function stripPcKeyHints(text: string): string {
+  return text
+    .replace(/\s*\[[A-Za-zА-Яа-я0-9/+\-–—\s]{1,16}\]/g, '')
+    .replace(/\s*\([A-Z]\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,!?:;»"])/g, '$1')
+    .trim();
+}
+
 export interface WeaponText {
   name: string;
   shortName: string;
@@ -199,6 +224,27 @@ export interface UiStrings {
   mobilePat: string;
   mobileJump: string;
   mobileFlash: string;
+  hudEditorTitle: string;
+  hudEditorDesc: string;
+  hudEditorOpenBtn: string;
+  hudEditorSave: string;
+  hudEditorReset: string;
+  hudEditorCancel: string;
+  hudEditorScale: string;
+  hudEditorHint: string;
+  hudControlNames: {
+    joystick: string;
+    fire: string;
+    reload: string;
+    jump: string;
+    interact: string;
+    pat: string;
+    flashlight: string;
+    scope: string;
+    weapons: string;
+  };
+  audioUploading: string;
+  audioUploadError: string;
   pauseHeading: string;
   pauseSubcopy: string;
   victoryHeading: string;
@@ -305,17 +351,123 @@ export interface UiStrings {
   difficulties: Record<DifficultyId, { label: string; hint: string }>;
   sensitivityLabel: string;
   cutsceneKeyHint: string;
-  storyLogs: Record<
-    | 'ch1_start'
-    | 'ch1_fuse_1'
-    | 'ch1_fuse_2'
-    | 'ch2_start'
-    | 'ch2_relay_1'
-    | 'ch2_relay_2'
-    | 'ch2_relay_3'
-    | 'boss_arrival',
-    StoryLogEntry
+  storyLogs: Record<string, StoryLogEntry>;
+  storyTapes: Record<
+    string,
+    { code: string; title: string; location: string; speaker: string; text: string }
   >;
+  tapeArchiveHeading: string;
+  tapeLockedHint: string;
+  tapeCollectPrompt: (title: string) => string;
+  tapeCollectedToast: (title: string, found: number, total: number) => string;
+  tapesCounterLabel: string;
+  lanCoopBtn: string;
+  lanCoop: {
+    title: string;
+    subtitle: string;
+    callsignLabel: string;
+    serverAddrLabel: string;
+    serverAddrPlaceholder: string;
+    connectBtn: string;
+    refreshBtn: string;
+    createRoomBtn: string;
+    joinRoomBtn: string;
+    roomCodePlaceholder: string;
+    openRoomsHeading: string;
+    noOpenRooms: string;
+    yourLanHeading: string;
+    copyCodeBtn: string;
+    copiedBadge: string;
+    readyBtn: string;
+    unreadyBtn: string;
+    startMatchBtn: string;
+    enterHubBtn: string;
+    hubRuleHint: string;
+    leaveRoomBtn: string;
+    hostTag: string;
+    readyTag: string;
+    waitingTag: string;
+    statusConnected: string;
+    statusConnecting: string;
+    statusOffline: string;
+    squadHeading: string;
+    revivePrompt: (name: string) => string;
+    downedBanner: string;
+    pingHint: string;
+    pingSentLabel: string;
+    scalingBadge: (players: number, hpMult: string, dmgMult: string) => string;
+  };
+  zoneNames: Record<ZoneId, string>;
+  hub: {
+    title: string;
+    subtitle: string;
+    freeExploreHint: string;
+    moskvitchBoardPrompt: string;
+    moskvitchLeavePrompt: string;
+    moskvitchBoardBtn: string;
+    moskvitchLeaveBtn: string;
+    moskvitchCounter: (boarded: number, total: number) => string;
+    moskvitchWaiting: (missing: number) => string;
+    moskvitchLaunching: string;
+    terminalPrompt: string;
+    terminalBtn: string;
+    rangeHint: string;
+    rangeHitReadout: (dummy: string, dmg: number, dist: number, crit: boolean, destroyed: boolean) => string;
+    rangeDummyNames: {
+      crawler: string;
+      lampshade: string;
+      screamer: string;
+      heavy: string;
+    };
+    enterHubBtn: string;
+    quickStartBtn: string;
+    ammoInfiniteBadge: string;
+    zoneTransitionBanner: (zoneName: string) => string;
+  };
+  specsModal: {
+    title: string;
+    subtitle: string;
+    closeBtn: string;
+    tabWeapons: string;
+    tabUpgrades: string;
+    tabEnemies: string;
+    tabCoop: string;
+    statDamage: string;
+    statPellets: string;
+    statRpm: string;
+    statMag: string;
+    statReload: string;
+    statRange: string;
+    statSpecial: string;
+    secSuffix: string;
+    enemyHpLabel: string;
+    enemySpeedLabel: string;
+    enemyThreatLabel: string;
+    enemyProfiles: Array<{
+      kind: EnemyKind;
+      hp: string;
+      speed: string;
+      behavior: string;
+      counter: string;
+    }>;
+    roosterCardTitle: string;
+    roosterCardDesc: string;
+    coopIntro: string;
+    coopColPlayers: string;
+    coopColHp: string;
+    coopColDmg: string;
+    coopColSpeed: string;
+    coopColCaps: string;
+    coopColKills: string;
+    coopColLoot: string;
+    coopRulesNote: string;
+  };
+  cutsceneVote: {
+    voteBtn: string;
+    votedBtn: string;
+    counter: (votes: number, total: number) => string;
+    waitingHint: string;
+  };
   characterRanks: [string, string, string, string, string];
   levelShort: string;
   levelUpBanner: (level: number, rank: string) => string;
@@ -590,7 +742,14 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       ch1_fuse_2: 'Электрощиток №11 (Восточное крыльцо)',
       ch2_relay_1: 'Ретранслятор А (Двор №12)',
       ch2_relay_2: 'Ретранслятор Б (Двор №07)',
-      ch2_relay_3: 'Ретранслятор В (Двор №04)',
+      ch3_stab_1: 'Стабилизатор фазы №08 (Тёмный двор)',
+      ch3_stab_2: 'Стабилизатор фазы №15 (Восточный сад)',
+      ch4_beacon_1: 'Маяк периметра С-З (Двор №04)',
+      ch4_beacon_2: 'Маяк периметра С-В (Двор №03)',
+      ch4_beacon_3: 'Дорожное зеркало (Южное шоссе)',
+      ch5_core_1: 'Заземление подстанции (Запад)',
+      ch5_core_2: 'Заземление подстанции (Восток)',
+      ...EXTRA_OBJECTIVE_LABELS_RU,
     },
     chapterMeta: [
       {
@@ -606,7 +765,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
             {
               speaker: 'ТЕЛЕГРАММА · МИХАИЛ САВЕЛЬЕВ',
               timestamp: '23:59:04',
-              text: '«Внук, если ты читаешь это — мой резонатор на подстанции пошёл вразнос. Я хотел удержать вечер до последнего автобуса, но запер весь посёлок в 23:59. Забери ключи у дома №14 и не бросай Гришу». Ваш «Москвич» заглох в лужах прямо у въездного знака.',
+              text: '«Внук, если ты читаешь это — мой резонатор на подстанции пошёл вразнос. Я хотел удержать вечер до последнего автобуса №404, но запер весь посёлок в 23:59. Забери ключи у дома №14 и не бросай Гришу». Ваш «Москвич» заглох в мокром асфальте прямо у въезда.',
             },
             {
               speaker: 'ПЕТУХ ГРИША · ВЕСТНИК РАССВЕТА',
@@ -616,84 +775,174 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
             {
               speaker: 'ВНУТРЕННИЙ МОНОЛОГ',
               timestamp: '23:59:31',
-              text: 'Руки ещё дрожат на старом ТОЗ-194 из дедова багажника, но пути назад нет — шоссе замкнулось в кольцо. Включите два уличных щитка [E] по оранжевым маякам, и вы начнёте вспоминать, как устроена эта машина времени.',
+              text: 'Руки ещё дрожат на старом ТОЗ-194 из багажника, но дорога назад замкнулась в кольцо. Включите два уличных щитка [E] и собирайте по дворам кассеты МК-60 деда — в них вся правда о том вечере.',
             },
           ],
         },
       },
       {
         title: 'Глава 2: Плёнки Савельева',
-        objectiveSummary: 'Пройдите через дворы и настройте 3 радиоретранслятора.',
+        objectiveSummary: 'Пройдите во дворы №12 и №07 и настройте 2 радиоретранслятора.',
         introCutscene: {
           id: 'ch2_intro',
           chapter: 2,
           title: 'Акт II · Плёнки Савельева',
-          subtitle: 'Архив катушечной памяти · Сбой синхронизации 00:13',
+          subtitle: 'Архив катушечной памяти · Сбой синхронизации 00:11',
           image: ASSET_PATHS.cutsceneWatchman,
           beats: [
             {
               speaker: 'КАССЕТА ДЕДА №02 · ИНЖЕНЕРНЫЙ ДНЕВНИК',
-              timestamp: '00:13:05',
-              text: 'Щитки оживили радио «Москвича», и из помех прорвался усталый голос деда: «Когда в тот октябрь шторм оборвал трассу и последний рейс не пришёл, я подключил катушечный резонатор LOOP_00 к трансформатору. Я надеялся перемотать один-единственный час...»',
+              timestamp: '00:11:05',
+              text: 'Щитки оживили радио «Москвича», и из хрипа прорвался усталый голос деда: «Когда октябрьский ливень размыл трассу и рейс №404 с твоей матерью не пришёл вовремя, я подцепил резонатор LOOP_00 к подстанции. Хотел отмотать один-единственный час...»',
             },
             {
               speaker: 'ОСОЗНАНИЕ · ПРИРОДА ТЕНЕЙ',
-              timestamp: '00:13:19',
-              text: '«Но плёнка начала гнить. Твари за заборами и Пустые Скримеры — не чужаки, а разорванные эхо страха и ожидания, размазанные по сотням повторов одной ночи. Каждый бой делает тебя сильнее и возвращает память».',
+              timestamp: '00:11:19',
+              text: '«Но магнитная лента начала осыпаться. Твари в траве и Тени под фонарями — не чужаки, а разорванные отпечатки тревоги, записанные поверх друг друга сотню раз».',
             },
             {
               speaker: 'ПЛАН ПРОРЫВА',
-              timestamp: '00:13:34',
-              text: 'Найдите три садовых ретранслятора [E] по зелёным лучам и сломайте фазу петли. Вы больше не случайный гость на трассе — переключите кассету [N], держите Гришу на фланге и идите к сердцу подстанции.',
+              timestamp: '00:11:34',
+              text: 'Настройте ретрансляторы во дворах №12 и №07 [E], чтобы выловить чистую частоту диспетчерской. Каждый бой возвращает ясность и закаляет вашу хватку.',
             },
           ],
         },
       },
       {
-        title: 'Глава 3: Тень, которая не отпустила',
-        objectiveSummary: 'Разбейте фонарь Полуночного Смотрителя на центральной площади.',
+        title: 'Глава 3: Глухой квартал',
+        objectiveSummary: 'Прорвитесь в тёмные дворы №08 и №15 и перезапустите 2 стабилизатора.',
         introCutscene: {
           id: 'ch3_intro',
           chapter: 3,
-          title: 'Акт III · Тень, которая не отпустила',
+          title: 'Акт III · Глухой квартал',
+          subtitle: 'Дома №08 и №15 · Сектор блэкаута · 00:24',
+          image: ASSET_PATHS.cutsceneStreet,
+          beats: [
+            {
+              speaker: 'РАДИОПЕРЕХВАТ · СОСЕД ИЗ ДОМА №08',
+              timestamp: '00:24:03',
+              text: 'Через ретрансляторы пробился сбивчивый голос соседа с тёмной стороны улицы: «Миша, выключи трансформатор! За северными соснами горят фары — но они не могут доехать, пока улица крутится по кругу!»',
+            },
+            {
+              speaker: 'БЛЭКАУТ КВАРТАЛА',
+              timestamp: '00:24:18',
+              text: 'Лампы у домов №08 и №15 моргнули и погасли. Тени стали хитрее — они заходят с флангов через калитки, а Пустые Скримеры караулят прямо за штакетником.',
+            },
+            {
+              speaker: 'ЗАДАЧА',
+              timestamp: '00:24:30',
+              text: 'Включите фонарик [L], прорвитесь в неосвещённые дворы №08 и №15 и перезапустите оба стабилизатора фазы [E], иначе блэкаут отрежет вас от подстанции.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Глава 4: Рейс №404',
+        objectiveSummary: 'Соберите 3 маяка периметра у северных домов и заглохшего «Москвича».',
+        introCutscene: {
+          id: 'ch4_intro',
+          chapter: 4,
+          title: 'Акт IV · Рейс №404',
+          subtitle: 'Северный рубеж · Автобус, который не погиб · 00:38',
+          image: ASSET_PATHS.cutsceneWatchman,
+          beats: [
+            {
+              speaker: 'ДИСПЕТЧЕРСКАЯ · ПОЛНАЯ РАСШИФРОВКА',
+              timestamp: '00:38:08',
+              text: 'Стабилизаторы очистили ленту до конца — и правда ударила холодным током: рейс №404 НЕ разбился. ГАИ остановила автобус на сухом посту в десяти километрах, и все пассажиры благополучно дождались утра.',
+            },
+            {
+              speaker: 'ТРАГЕДИЯ МИХАИЛА САВЕЛЬЕВА',
+              timestamp: '00:38:22',
+              text: 'Утром по телефону пытались дозвониться до дома №14 — но дед так и не услышал звонка. Его собственный резонатор снова и снова сбрасывал часы на 23:59, запирая его в самом страшном часе жизни.',
+            },
+            {
+              speaker: 'ПРОРЫВ ПЕРИМЕТРА',
+              timestamp: '00:38:36',
+              text: 'Чтобы разомкнуть зеркальное кольцо вокруг посёлка, включите три маяка периметра [E]: в северных дворах №04 и №03 и у самого «Москвича» на южном въезде.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Глава 5: Противофаза подстанции',
+        objectiveSummary: 'Сбросьте 2 заземления у центральной вышки и выдержите штурм теней.',
+        introCutscene: {
+          id: 'ch5_intro',
+          chapter: 5,
+          title: 'Акт V · Противофаза подстанции',
+          subtitle: 'Трансформаторное кольцо · Критический резонанс · 00:50',
+          image: ASSET_PATHS.cutsceneWatchman,
+          beats: [
+            {
+              speaker: 'СИРЕНА ПОДСТАНЦИИ · 00:50',
+              timestamp: '00:50:03',
+              text: 'Зеркальный барьер за лесом лопнул с глухим звоном. Все тени, копившиеся в Негрузино тридцать лет, хлынули к центральной площади, чтобы защитить гудящий трансформатор.',
+            },
+            {
+              speaker: 'ПЕТУХ ГРИША · БОЕВОЙ КЛИЧ',
+              timestamp: '00:50:18',
+              text: 'Гриша взмыл под проливными каплями над перекрёстком и прокричал навстречу тучам. Впереди самый тяжёлый бой — не останавливайтесь, подбирайте аптечки и выжгите петлю дотла.',
+            },
+            {
+              speaker: 'ЗАДАЧА',
+              timestamp: '00:50:31',
+              text: 'Разомкните оба заземления подстанции [E] по бокам площади и отобейтесь от волны — тогда само сердце петли выйдет на свет.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Глава 6: Тень, которая не отпустила',
+        objectiveSummary: 'Разбейте фонарь Полуночного Смотрителя на центральной площади.',
+        introCutscene: {
+          id: 'ch6_intro',
+          chapter: 6,
+          title: 'Акт VI · Тень, которая не отпустила',
           subtitle: 'Трансформаторная площадь · 00:59 · Финальный рубеж',
           image: ASSET_PATHS.cutsceneWatchman,
           beats: [
             {
               speaker: 'ПОСЛЕДНЯЯ ЗАПИСЬ МИХАИЛА САВЕЛЬЕВА',
               timestamp: '00:59:04',
-              text: 'Все три ретранслятора сошлись в противофазе. Над вышкой треснуло небо: из трансформаторного гула вышел Полуночный Смотритель — застывшая оболочка самого дедова горя, сжимающая фонарь с украденной минутой.',
+              text: 'Заземления вылетели снопом синих искр. Над вышкой треснуло небо: из трансформаторного гула вышел Полуночный Смотритель — застывшая оболочка самого дедова горя, сжимающая фонарь с украденной минутой.',
             },
             {
-              speaker: 'РЕШИМОСТЬ · ХРАНИТЕЛЬ РАССВЕТА',
+              speaker: 'РЕШИМОСТЬ · ПРОРЫВ НА ШОССЕ',
               timestamp: '00:59:19',
-              text: '«Прости, дед. Удерживать прошлое силой — значит хоронить живых». Вы перехватываете ствол без страха. Гриша взлетает с боевым кличем: разбейте фонарь Смотрителя на площади — и впервые за тридцать лет пробьёт 01:00.',
+              text: '«Прости, дед. Но за этой улицей — автопарк, рейс №404 и сама подстанция «Луч-94»». Разбейте фонарь Смотрителя, чтобы пробить дорогу на шоссе КПП-3!',
             },
           ],
         },
       },
+      ...EXTRA_CHAPTER_META_RU,
     ],
     victoryCutscene: {
       id: 'epilogue',
-      chapter: 4,
-      title: 'Эпилог · 01:00 — Рассвет над Негрузино',
-      subtitle: 'Петля 1994 года разомкнута. Время снова течёт вперёд.',
+      chapter: 19,
+      title: 'Эпилог · 06:00 — Рассвет над Негрузино',
+      subtitle: 'Ядро «Луч-94» остановлено. Все три сектора освобождены, время снова течёт вперёд.',
       image: ASSET_PATHS.cutsceneStreet,
       beats: [
         {
           speaker: 'ТИШИНА ПОСЛЕ ГРОЗЫ · 01:00',
           timestamp: '01:00:02',
-          text: 'Фонарь Смотрителя осыпался холодными искрами, и гул подстанции оборвался навсегда. За окнами деревянных и кирпичных домов мягко тикнули настенные часы, а над соснами проступила тонкая розовая полоска настоящего утра.',
+          text: 'Фонарь Смотрителя осыпался холодными искрами, и тридцатилетний гул подстанции оборвался навсегда. За окнами деревянных и кирпичных домов мягко тикнули настенные часы, а над соснами проступила тонкая розовая полоска настоящего утра.',
+        },
+        {
+          speaker: 'ГОЛОС ПО РАЦИИ · ПОСЛЕДНИЙ ЩЕЛЧОК',
+          timestamp: '01:00:14',
+          text: 'Из динамика «Москвича» на секунду донёсся чистый, спокойный вздох Михаила Савельева без единой помехи: «Спасибо, что выключил плёнку. Береги Гришу...» — и катушка мягко остановилась.',
         },
         {
           speaker: 'ПЕТУХ ГРИША · ХРАНИТЕЛЬ УТРА',
-          timestamp: '01:00:16',
+          timestamp: '01:00:26',
           text: 'Дождь стих. Гриша взлетел на тёплый капот «Москвича», расправил изумрудные перья и выдал чистое, звонкое кукареку — закрывая октябрь 1994-го, который больше никому не нужно бояться.',
         },
         {
           speaker: 'ДОРОГА В БУДУЩЕЕ',
-          timestamp: '01:00:31',
-          text: 'На сиденье лежит ключ от дома №14 и последняя кассета деда с подписью «Отпусти». Вы гладите Гришу по гребешку, заводите мотор — и впервые видите прямую дорогу на шоссе, свободную до самого горизонта.',
+          timestamp: '01:00:41',
+          text: 'На сиденье лежит ключ от дома №14 и кассета с подписью «Отпусти». Вы гладите Гришу по гребешку, поворачиваете ключ зажигания — и впервые видите прямую дорогу на шоссе, свободную до самого горизонта.',
         },
       ],
     },
@@ -791,7 +1040,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     storyLogs: {
       ch1_start: {
         speaker: 'РАЦИЯ · 23:59',
-        text: '«Москвич» заглох у дома №14. Включите 2 уличных щитка [E] — клавиша [N] меняет кассету на магнитоле.',
+        text: '«Москвич» заглох у дома №14. Включите 2 уличных щитка [E] и ищите янтарные кассеты деда по дворам.',
       },
       ch1_fuse_1: {
         speaker: 'ДНЕВНИК САВЕЛЬЕВА · ЩИТОК №14',
@@ -799,28 +1048,249 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch1_fuse_2: {
         speaker: 'РАДИОПЕРЕХВАТ · ДОМ №11',
-        text: 'Сеть ожила! За садовыми заборами запели три ретранслятора — они хранят код сброса петли.',
+        text: 'Уличная сеть ожила! В дворах №12 и №07 загудели ретрансляторы — на них записан сигнал рейса №404.',
       },
       ch2_start: {
         speaker: 'КАССЕТА №02 · МИХАИЛ САВЕЛЬЕВ',
-        text: '«Я боялся завтрашнего дня и запер всех в дожде. Сбей фазу на трёх зелёных ретрансляторах [E]».',
+        text: '«Я боялся завтрашнего дня и запер всех в дожде. Настрой два садовых ретранслятора [E]».',
       },
       ch2_relay_1: {
         speaker: 'РЕТРАНСЛЯТОР А · ДВОР №12',
-        text: 'На плёнке слышен звон последнего автобуса 1994-го — вы чувствуете, как возвращается хладнокровие.',
+        text: 'Сквозь треск плёнки слышен шум автовокзала и гудок автобуса №404 — помехи начинают расходиться.',
       },
       ch2_relay_2: {
         speaker: 'РЕТРАНСЛЯТОР Б · ДВОР №07',
-        text: '«Если бы я мог переиграть ту ночь, я бы отпустил её. Остался последний узел во дворе №04!»',
+        text: 'Сигнал вывел на глухой квартал! У домов №08 и №15 погасли фонари — там спрятаны стабилизаторы фазы.',
       },
-      ch2_relay_3: {
-        speaker: 'РЕТРАНСЛЯТОР В · ДВОР №04',
-        text: 'Резонатор сорван! Подстанция в центре дрожит — готовьтесь встретить Смотрителя лицом к лицу.',
+      ch3_start: {
+        speaker: 'СОСЕД · ДОМ №08 · 00:24',
+        text: '«Свет погас по обе стороны! Включай фонарик [L] и перезапусти стабилизаторы во дворах №08 и №15!»',
+      },
+      ch3_stab_1: {
+        speaker: 'СТАБИЛИЗАТОР №08',
+        text: 'Частота пошла вверх — в эфире прорвался голос диспетчера: «Рейс 404 остановлен на КПП-3, все живы...»',
+      },
+      ch3_stab_2: {
+        speaker: 'СТАБИЛИЗАТОР №15',
+        text: 'Обе фазы выровнены! Осталось сломать зеркальный периметр у северных домов и южного въезда.',
+      },
+      ch4_start: {
+        speaker: 'ДИСПЕТЧЕРСКАЯ · 00:38',
+        text: 'Автобус уцелел в ту ночь! Активируйте 3 маяка периметра [E] — во дворах №04, №03 и у «Москвича».',
+      },
+      ch4_beacon_1: {
+        speaker: 'МАЯК №04 · СЕВЕРНЫЙ РУБЕЖ',
+        text: 'За соснами на миг мелькнули настоящие звёзды — магнитный купол начинает трещать по швам.',
+      },
+      ch4_beacon_2: {
+        speaker: 'МАЯК №03 · ВОСТОЧНЫЙ РУБЕЖ',
+        text: 'Вторая дуга замкнута! Остался последний маяк на южном шоссе рядом с вашим «Москвичом».',
+      },
+      ch4_beacon_3: {
+        speaker: 'ДОРОЖНОЕ ЗЕРКАЛО · ШОССЕ',
+        text: 'Периметр пал! Все тени стягиваются к центральной площади — готовьтесь к штурму подстанции!',
+      },
+      ch5_start: {
+        speaker: 'ПОДСТАНЦИЯ · 00:50',
+        text: 'Критический резонанс! Сбросьте 2 заземления по бокам площади [E] и отбейте наступающую волну.',
+      },
+      ch5_core_1: {
+        speaker: 'ЗАЗЕМЛЕНИЕ ЗАПАД',
+        text: 'Искры ударили по лужам! Трансформатор завыл на октаву ниже — осталась восточная шина.',
+      },
+      ch5_core_2: {
+        speaker: 'ЗАЗЕМЛЕНИЕ ВОСТОК',
+        text: 'Обе шины сорваны! Дождь над площадью замер в воздухе — сам Смотритель сходит с вышки.',
       },
       boss_arrival: {
         speaker: 'ТРАНСФОРМАТОР · 00:59',
-        text: 'Полуночный Смотритель вышел на площадь! Разбейте его фонарь и освободите Негрузино!',
+        text: 'Полуночный Смотритель вышел на площадь! Разбейте его фонарь и откройте путь на шоссе!',
       },
+      ...EXTRA_STORY_LOGS_RU,
+    },
+    storyTapes: {
+      tape_01: {
+        code: 'МК-60 #01',
+        title: 'Последний поворот',
+        location: 'У «Москвича» на въезде',
+        speaker: 'ВОДИТЕЛЬ «МОСКВИЧА» · 1994',
+        text: '«Стрелка часов на приборке снова прыгнула с 23:59:59 на 23:59:00. Дворники скребут по стеклу, а у дома №14 горит один-единственный жёлтый свет».',
+      },
+      tape_02: {
+        code: 'МК-60 #02',
+        title: 'Схема LOOP_00',
+        location: 'Крыльцо дома №14',
+        speaker: 'МИХАИЛ САВЕЛЬЕВ · 14.10.1994',
+        text: '«Если замкнуть катушечный генератор через понижающий трансформатор, время в радиусе ста метров вязнет, как сырая плёнка. Мне нужен всего час, пока не придёт автобус».',
+      },
+      tape_03: {
+        code: 'МК-60 #03',
+        title: 'Почему Гриша не замер',
+        location: 'Угол двора №11',
+        speaker: 'МИХАИЛ САВЕЛЬЕВ · ПОВТОР #17',
+        text: '«Часы стоят, соседи повторяют одни и те же шаги, и только петух Гриша ходит свободно. Наверное, потому что он ждёт рассвета, а не вчерашнего вечера».',
+      },
+      tape_04: {
+        code: 'МК-60 #04',
+        title: 'Шёпот из-за штакетника',
+        location: 'Тёмный двор дома №08',
+        speaker: 'СОСЕД ВАСИЛИЙ · ДОМ №08',
+        text: '«С каждым откатом плёнка трётся. Сначала пропали лица на фото, потом люди за заборами стали вытягиваться в тени. Не слушай их крик — это просто испорченная дорожка».',
+      },
+      tape_05: {
+        code: 'МК-60 #05',
+        title: 'Звонок с КПП-3',
+        location: 'Северный двор дома №03',
+        speaker: 'ДИСПЕТЧЕР АВТОПАРКА · 06:15',
+        text: '«Алло, Негрузино? Передайте Савельеву: рейс №404 переждал ливень на КПП-3, все пассажиры целы и пьют горячий чай. Почему у вас постоянно занято?..»',
+      },
+      tape_06: {
+        code: 'МК-60 #06',
+        title: 'Кассета «Отпусти»',
+        location: 'Подножие центральной вышки',
+        speaker: 'МИХАИЛ САВЕЛЬЕВ · ПОСЛЕДНЯЯ ЗАПИСЬ',
+        text: '«Если ты добрался до вышки, внук — значит, я сам уже стал частью этой тени. Не жалей её. Разбей фонарь на площади и выведи Гришу на солнце».',
+      },
+      ...EXTRA_STORY_TAPES_RU,
+    },
+    tapeArchiveHeading: 'Найденные кассеты МК-60 (Досье сюжета)',
+    tapeLockedHint: 'Не найдена — обыщите дворы, автопарк и подстанцию по янтарному свечению кассет.',
+    tapeCollectPrompt: (title) => `[E] Подобрать кассету: «${title}»`,
+    tapeCollectedToast: (title, found, total) => `КАССЕТА ${found}/${total}: «${title}»`,
+    tapesCounterLabel: 'КАССЕТЫ',
+    lanCoopBtn: 'LAN Кооп',
+    lanCoop: {
+      title: 'LAN Кооператив · 1994',
+      subtitle: 'Играйте вместе по локальной сети (Wi-Fi / Ethernet) до 4 выживших в одном хабе и кампании',
+      callsignLabel: 'Ваш позывной',
+      serverAddrLabel: 'Адрес LAN-сервера (пусто = этот хост)',
+      serverAddrPlaceholder: 'например 192.168.1.42:3000',
+      connectBtn: 'Подключиться',
+      refreshBtn: 'Обновить',
+      createRoomBtn: 'Создать LAN-комнату',
+      joinRoomBtn: 'Войти по коду',
+      roomCodePlaceholder: 'КОД (напр. 7K4P)',
+      openRoomsHeading: 'Открытые комнаты в сети',
+      noOpenRooms: 'В локальной сети пока нет открытых комнат — создайте первую!',
+      yourLanHeading: 'Адрес для друзей в вашей Wi-Fi / LAN сети',
+      copyCodeBtn: 'Копировать код',
+      copiedBadge: 'Скопировано!',
+      readyBtn: 'Готов к выходу',
+      unreadyBtn: 'Отменить готовность',
+      startMatchBtn: 'В 3D-хаб подготовки',
+      enterHubBtn: 'Войти в 3D-хаб',
+      hubRuleHint: 'Сначала отряд попадёт в светлый гаражный хаб со стрельбищем и стендом ТТХ. Матч начнётся, когда ВСЕ игроки сядут в «Москвич».',
+      leaveRoomBtn: 'Выйти из комнаты',
+      hostTag: 'ХОСТ',
+      readyTag: 'ГОТОВ',
+      waitingTag: 'ЖДЁТ',
+      statusConnected: 'Подключено к LAN',
+      statusConnecting: 'Подключение...',
+      statusOffline: 'Нет связи с сервером',
+      squadHeading: 'ОТРЯД LAN',
+      revivePrompt: (name) => `[E] Поднять напарника: ${name}`,
+      downedBanner: 'ВЫ РАНЕНЫ · НАПАРНИК МОЖЕТ ПОДНЯТЬ ВАС [E]',
+      pingHint: '[G] Метка отряду',
+      pingSentLabel: 'МЕТКА НАПАРНИКА',
+      scalingBadge: (players, hpMult, dmgMult) => `КООП ×${players} · ОЗ ${hpMult} · УРОН ${dmgMult}`,
+    },
+    zoneNames: ZONE_NAMES.ru,
+    hub: {
+      title: 'ГАРАЖ САВЕЛЬЕВЫХ · ХАБ ПОДГОТОВКИ',
+      subtitle: 'Безопасная зона · 1994 · Проверьте оружие на тире, изучите ТТХ и садитесь в «Москвич»',
+      freeExploreHint: 'Свободное перемещение · Бесконечный запас патронов в тире · Стреляйте по манекенам для проверки отдачи',
+      moskvitchBoardPrompt: '[E] Сесть в «Москвич-412» (готов к выезду)',
+      moskvitchLeavePrompt: '[E] Выйти из «Москвича»',
+      moskvitchBoardBtn: 'Сесть в «Москвич»',
+      moskvitchLeaveBtn: 'Выйти из машины',
+      moskvitchCounter: (boarded, total) => `В «Москвиче»: ${boarded}/${total}`,
+      moskvitchWaiting: (missing) => `Ожидание отряда — осталось сесть: ${missing}`,
+      moskvitchLaunching: 'Все на борту! Заводим «Москвич» — выезд в Негрузино...',
+      terminalPrompt: '[E] Открыть стенд ТТХ оружия и врагов',
+      terminalBtn: 'Стенд ТТХ',
+      rangeHint: 'Полигон: 5 AFK-манекенов (10м–22м) · Попадания показывают урон и крит в голову',
+      rangeHitReadout: (dummy, dmg, dist, crit, destroyed) =>
+        `${dummy} (${dist}м): −${dmg} ОЗ${crit ? ' · КРИТ!' : ''}${destroyed ? ' · УНИЧТОЖЕН (респ. 2.5с)' : ''}`,
+      rangeDummyNames: {
+        crawler: 'Манекен «Тварь»',
+        lampshade: 'Манекен «Тень»',
+        screamer: 'Манекен «Скример»',
+        heavy: 'Бронированный манекен',
+      },
+      enterHubBtn: 'В хаб подготовки',
+      quickStartBtn: 'Сразу в Главу 1',
+      ammoInfiniteBadge: 'ТИР · ПАТРОНЫ ∞',
+      zoneTransitionBanner: (zoneName) => `ПЕРЕХОД В ЛОКАЦИЮ: ${zoneName}`,
+    },
+    specsModal: {
+      title: 'СТЕНД АРСЕНАЛА И ТАКТИКИ · 1994',
+      subtitle: 'Точные ТТХ всех 5 стволов, модулей усиления, бестиарий и формулы кооперативного баланса',
+      closeBtn: 'Закрыть стенд',
+      tabWeapons: 'Оружие (5)',
+      tabUpgrades: 'Патчи .EXE',
+      tabEnemies: 'Враги и Гриша',
+      tabCoop: 'Баланс Коопа',
+      statDamage: 'Урон',
+      statPellets: 'Дробины',
+      statRpm: 'Темп/мин',
+      statMag: 'Магазин / Запас',
+      statReload: 'Перезарядка',
+      statRange: 'Дистанция',
+      statSpecial: 'Особенность',
+      secSuffix: 'с',
+      enemyHpLabel: 'Прочность',
+      enemySpeedLabel: 'Скорость',
+      enemyThreatLabel: 'Тактика и контрмеры',
+      enemyProfiles: [
+        {
+          kind: 'crawler',
+          hp: '78 ОЗ',
+          speed: 'Быстрый (5.0 м/с)',
+          behavior: 'Рывками заходит с флангов, ускоряется вблизи.',
+          counter: 'ТОЗ-194 в упор или очередь P90 по корпусу.',
+        },
+        {
+          kind: 'lampshade',
+          hp: '115 ОЗ',
+          speed: 'Средний (4.0 м/с)',
+          behavior: 'Скрывается у фонарей, держит дугу обхода и наносит тяжёлый удар.',
+          counter: 'Хедшот из DE-50 / AWP сбивает замах.',
+        },
+        {
+          kind: 'screamer',
+          hp: '92 ОЗ',
+          speed: 'Резкий (4.6 м/с)',
+          behavior: 'Выскакивает из-за укрытий и провоцирует звуковой скример в упор.',
+          counter: 'Слушайте предупреждение Гриши и сбивайте до сближения.',
+        },
+        {
+          kind: 'watchman',
+          hp: '780–1150 ОЗ (Босс)',
+          speed: 'Уверенный (3.8 м/с)',
+          behavior: 'Босс конца каждого акта (Гл. 6, 12, 18). Запускает тёмные волны и таранные выпады.',
+          counter: 'Держите дистанцию, бейте AWP в фонарь/голову или заливайте миниганом ГШГ-6.',
+        },
+      ],
+      roosterCardTitle: 'Спутник Гриша (Вестник рассвета)',
+      roosterCardDesc:
+        'Гриша летает рядом, заранее кукарекает о направлении и дистанции ближайшей угрозы и никогда не лезет на линию огня. Погладьте его [F], чтобы восстановить здоровье и сбить панику.',
+      coopIntro:
+        'Сложность динамически пересчитывается в реальном времени при входе или выходе любого игрока (1–4 выживших):',
+      coopColPlayers: 'Отряд',
+      coopColHp: 'ОЗ врагов',
+      coopColDmg: 'Урон врагов',
+      coopColSpeed: 'Скорость',
+      coopColCaps: 'Лимит / Спавн',
+      coopColKills: 'Цели главы',
+      coopColLoot: 'Дроп / Патроны',
+      coopRulesNote:
+        'Пропуск сюжетных кат-сцен в коопе работает по единогласному голосованию (X/Y). При выходе игрока кворум хаба и кат-сцен автоматически пересчитывается без зависаний.',
+    },
+    cutsceneVote: {
+      voteBtn: 'Голосовать за пропуск',
+      votedBtn: 'Голос за пропуск принят',
+      counter: (votes, total) => `Пропуск катсцены: ${votes}/${total}`,
+      waitingHint: 'Катсцена пропустится, когда проголосуют все игроки отряда',
     },
     characterRanks: [
       'Гость на трассе',
@@ -833,6 +1303,27 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     levelUpBanner: (level, rank) => `НОВЫЙ РАНГ · УР. ${level} — ${rank}`,
     nextTrackBtn: 'Сменить трек (N)',
     trackToastPrefix: 'КАССЕТА',
+    hudEditorTitle: 'Сенсорное управление',
+    hudEditorDesc: 'Перетаскивайте кнопки и джойстик на удобные места и настраивайте их размер отдельно для вертикального и горизонтального экрана.',
+    hudEditorOpenBtn: 'Настроить кнопки на экране',
+    hudEditorSave: 'Сохранить',
+    hudEditorReset: 'Сбросить',
+    hudEditorCancel: 'Отмена',
+    hudEditorScale: 'Размер',
+    hudEditorHint: 'Перетащите элемент пальцем, чтобы переместить его',
+    hudControlNames: {
+      joystick: 'Джойстик',
+      fire: 'Огонь',
+      reload: 'Перезарядка',
+      jump: 'Прыжок',
+      interact: 'Взаимодействие',
+      pat: 'Погладить',
+      flashlight: 'Фонарик',
+      scope: 'Прицел',
+      weapons: 'Оружие',
+    },
+    audioUploading: 'Загрузка трека в память…',
+    audioUploadError: 'Не удалось прочитать аудиофайл. Проверьте формат (MP3, WAV, OGG, M4A) и размер до 48 МБ.',
   },
 
   en: {
@@ -1093,7 +1584,14 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       ch1_fuse_2: 'Fuse Box #11 (East Porch)',
       ch2_relay_1: 'Signal Relay A (Yard #12)',
       ch2_relay_2: 'Signal Relay B (Yard #07)',
-      ch2_relay_3: 'Signal Relay C (Yard #04)',
+      ch3_stab_1: 'Phase Stabilizer #08 (Dark Yard)',
+      ch3_stab_2: 'Phase Stabilizer #15 (East Garden)',
+      ch4_beacon_1: 'Perimeter Beacon NW (Yard #04)',
+      ch4_beacon_2: 'Perimeter Beacon NE (Yard #03)',
+      ch4_beacon_3: 'Highway Mirror Beacon (South Road)',
+      ch5_core_1: 'Substation Ground Coupling (West)',
+      ch5_core_2: 'Substation Ground Coupling (East)',
+      ...EXTRA_OBJECTIVE_LABELS_EN,
     },
     chapterMeta: [
       {
@@ -1109,93 +1607,183 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
             {
               speaker: 'TELEGRAM · MIKHAIL SAVELIEV',
               timestamp: '23:59:04',
-              text: '“If you are reading this, my substation resonator ran away. I tried to hold onto the night before the last bus vanished—and locked the whole village in 23:59. Take the keys at House #14 and never leave Grisha behind.” Your Moskvitch stalls in the rain-filled road.',
+              text: '“If you are reading this, my substation resonator ran away. I tried to hold onto the night until Bus #404 returned—and locked the whole village in 23:59. Take the keys at House #14 and never leave Grisha behind.” Your Moskvitch stalls in the rain-slicked road.',
             },
             {
               speaker: 'GRISHA · HERALD OF DAWN',
               timestamp: '23:59:18',
-              text: 'Only Grandfather’s red-crested rooster Grisha still breathes outside the tape loop—the one creature whose crow calls the morning. He flanks clear of your sights, cries before shadows strike, and steadies your heart when patted [F].',
+              text: 'Only Grandfather’s red-crested rooster Grisha still breathes outside the tape loop—the one creature whose crow calls the morning. He stays clear of your sights, cries before shadows strike, and steadies your heart when patted [F].',
             },
             {
               speaker: 'INNER MONOLOGUE',
               timestamp: '23:59:31',
-              text: 'Your hands still tremble around the TOZ-194 from the trunk, yet the highway behind has folded back into rain. Follow the amber beams, restore two Fuse Boxes [E], and begin unraveling the machine Grandfather built.',
+              text: 'Your hands still tremble around the TOZ-194 from the trunk, yet the highway behind has folded into a loop. Restore two Fuse Boxes [E] and gather Grandfather’s glowing MK-60 cassette tapes scattered across the yards.',
             },
           ],
         },
       },
       {
         title: 'Chapter 2: Saveliev’s Tapes',
-        objectiveSummary: 'Cross the fenced lawns and align 3 Signal Relays.',
+        objectiveSummary: 'Cross Yards #12 & #07 and align 2 courtyard Signal Relays.',
         introCutscene: {
           id: 'ch2_intro',
           chapter: 2,
           title: 'Act II · Saveliev’s Tapes',
-          subtitle: 'Magnetic Tape Archive · Sync Drift 00:13',
+          subtitle: 'Magnetic Tape Archive · Sync Drift 00:11',
           image: ASSET_PATHS.cutsceneWatchman,
           beats: [
             {
               speaker: 'TAPE #02 · ENGINEER’S LOG',
-              timestamp: '00:13:05',
-              text: 'Power snaps back and Grandfather’s voice cuts through the car radio: “When the October storm severed the highway and the last bus never returned, I wired the LOOP_00 tape resonator into the transformer. I only wanted to rewind a single hour...”',
+              timestamp: '00:11:05',
+              text: 'Power snaps back and Grandfather’s voice cuts through the car radio: “When the October storm washed out the highway and Bus #404 never arrived, I wired LOOP_00 into the transformer. I only wanted to rewind one single hour...”',
             },
             {
               speaker: 'REVELATION · ECHOES IN THE RAIN',
-              timestamp: '00:13:19',
-              text: '“Instead, the tape began to rot. The creatures behind the fences and the Hollow Screamers are shattered echoes of fear and waiting, smeared across hundreds of replays. Every fight sharpens your resolve.”',
+              timestamp: '00:11:19',
+              text: '“Instead, the magnetic tape began to rot. The creatures in the grass and the Shades beneath the lamps are torn imprints of dread recorded over themselves a hundred times.”',
             },
             {
               speaker: 'BREAKOUT PLAN',
-              timestamp: '00:13:34',
-              text: 'Link all three garden Signal Relays [E] along the green light pillars to break phase lock. You are no longer a lost traveler—flip the cassette [N], keep Grisha on your flank, and push toward the substation.',
+              timestamp: '00:11:34',
+              text: 'Tune the courtyard Signal Relays [E] in Yards #12 and #07 to pull a clean dispatch channel out of the static.',
             },
           ],
         },
       },
       {
-        title: 'Chapter 3: The Shadow That Held On',
-        objectiveSummary: 'Shatter the Midnight Watchman’s lantern in the central square.',
+        title: 'Chapter 3: The Blind Quarter',
+        objectiveSummary: 'Push into dark Yards #08 & #15 and reboot 2 Phase Stabilizers.',
         introCutscene: {
           id: 'ch3_intro',
           chapter: 3,
-          title: 'Act III · The Shadow That Held On',
+          title: 'Act III · The Blind Quarter',
+          subtitle: 'Houses #08 & #15 · Blackout Sector · 00:24',
+          image: ASSET_PATHS.cutsceneStreet,
+          beats: [
+            {
+              speaker: 'INTERCEPT · NEIGHBOR AT HOUSE #08',
+              timestamp: '00:24:03',
+              text: 'A shaken neighbor breaks over the tuned relay: “Mikhail, kill the transformer! Headlights are glowing beyond the northern pines—they can’t reach us while the street keeps looping!”',
+            },
+            {
+              speaker: 'SECTOR BLACKOUT',
+              timestamp: '00:24:18',
+              text: 'The streetlamps beside Houses #08 and #15 gutter out. Shades now flank through the open picket gates while Hollow Screamers stalk the dark yards.',
+            },
+            {
+              speaker: 'OBJECTIVE BRIEF',
+              timestamp: '00:24:30',
+              text: 'Flip on your flashlight [L], clear Yards #08 and #15, and reboot both Phase Stabilizers [E] before the blackout seals off the square.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Chapter 4: Route 404',
+        objectiveSummary: 'Activate 3 outer Perimeter Beacons across the northern yards & south road.',
+        introCutscene: {
+          id: 'ch4_intro',
+          chapter: 4,
+          title: 'Act IV · Route 404',
+          subtitle: 'Northern Barrier · The Bus That Survived · 00:38',
+          image: ASSET_PATHS.cutsceneWatchman,
+          beats: [
+            {
+              speaker: 'DISPATCH ARCHIVE · FULL PLAYBACK',
+              timestamp: '00:38:08',
+              text: 'The stabilizers clear the last layer of hiss—and the truth hits hard: Bus #404 never crashed. Highway patrol held it safely at Checkpoint 3 ten kilometers away until morning.',
+            },
+            {
+              speaker: 'MIKHAIL’S TRAGEDY',
+              timestamp: '00:38:22',
+              text: 'They tried calling House #14 at dawn—yet Grandfather never heard the phone ring. His own resonator kept snapping the clock back to 23:59, trapping him in his worst hour.',
+            },
+            {
+              speaker: 'BREAK THE PERIMETER',
+              timestamp: '00:38:36',
+              text: 'Activate all three Perimeter Beacons [E]—in Yards #04 and #03, and beside the stalled Moskvitch on the south road—to shatter the mirror boundary.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Chapter 5: Counter-Phase',
+        objectiveSummary: 'Trip 2 Substation Ground Couplings in the square and survive the siege.',
+        introCutscene: {
+          id: 'ch5_intro',
+          chapter: 5,
+          title: 'Act V · Counter-Phase',
+          subtitle: 'Substation Ring · Critical Resonance · 00:50',
+          image: ASSET_PATHS.cutsceneWatchman,
+          beats: [
+            {
+              speaker: 'SUBSTATION ALARM · 00:50',
+              timestamp: '00:50:03',
+              text: 'The mirror boundary beyond the pines shatters like wet glass. Every shadow built up in Negruzino surges toward the central square to defend the humming transformer tower.',
+            },
+            {
+              speaker: 'GRISHA · BATTLE CRY',
+              timestamp: '00:50:18',
+              text: 'Grisha spirals above the rain-slicked intersection and crows straight into the storm. Heavy siege ahead—stay mobile, scavenge medkits, and burn the loop out.',
+            },
+            {
+              speaker: 'OBJECTIVE BRIEF',
+              timestamp: '00:50:31',
+              text: 'Overload both Substation Ground Couplings [E] flanking the central square and clear the surge to drag the Watchman into the open.',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Chapter 6: The Shadow That Held On',
+        objectiveSummary: 'Shatter the Midnight Watchman’s lantern in the central square.',
+        introCutscene: {
+          id: 'ch6_intro',
+          chapter: 6,
+          title: 'Act VI · The Shadow That Held On',
           subtitle: 'Transformer Square · 00:59 · Final Threshold',
           image: ASSET_PATHS.cutsceneWatchman,
           beats: [
             {
               speaker: 'FINAL TAPE · MIKHAIL SAVELIEV',
               timestamp: '00:59:04',
-              text: 'All three relays lock in counter-phase. The clouds crack above the tower as the Midnight Watchman steps into the square—the crystallized shell of Grandfather’s own grief, clutching the lantern that hoards the stolen minute.',
+              text: 'Both ground couplings blow in blue lightning. The clouds crack above the tower as the Midnight Watchman steps forward—the crystallized shell of Grandfather’s own grief, hoarding the stolen minute.',
             },
             {
-              speaker: 'RESOLVE · DAWNBEARER',
+              speaker: 'RESOLVE · BREAKOUT TO THE HIGHWAY',
               timestamp: '00:59:19',
-              text: '“Forgive me, Grandfather—forcing the past to stay only buries the living.” Your grip is steady now. Grisha rises with a battle crow: shatter the Watchman’s lantern and let 01:00 finally arrive.',
+              text: '“Forgive me, Grandfather. Beyond this street lie Bus Depot #4 and Substation Luch-94.” Shatter the Watchman’s lantern and break through onto Checkpoint-3 Highway!',
             },
           ],
         },
       },
+      ...EXTRA_CHAPTER_META_EN,
     ],
     victoryCutscene: {
       id: 'epilogue',
-      chapter: 4,
-      title: 'Epilogue · 01:00 — Dawn Over Negruzino',
-      subtitle: 'The 1994 loop is broken. Time flows forward once more.',
+      chapter: 19,
+      title: 'Epilogue · 06:00 — Dawn Over Negruzino',
+      subtitle: 'The Luch-94 Resonator Core is silenced. All three sectors are free and time flows forward once more.',
       image: ASSET_PATHS.cutsceneStreet,
       beats: [
         {
           speaker: 'STILLNESS AFTER THE STORM · 01:00',
           timestamp: '01:00:02',
-          text: 'The Watchman’s lantern dissolves into cool sparks and the substation hum dies forever. Behind every timber and brick wall, kitchen clocks tick softly past midnight while a pale rose dawn breaks above the pines.',
+          text: 'The Watchman’s lantern dissolves into cool sparks and the thirty-year substation hum dies forever. Behind every timber and brick wall, kitchen clocks tick softly past midnight while a pale rose dawn breaks above the pines.',
+        },
+        {
+          speaker: 'CAR RADIO · ONE FINAL CLICK',
+          timestamp: '01:00:14',
+          text: 'Through the Moskvitch speaker comes Mikhail Saveliev’s calm, clear voice without a trace of static: “Thank you for stopping the tape. Take care of Grisha...” — and the reel gently stops.',
         },
         {
           speaker: 'GRISHA · KEEPER OF MORNING',
-          timestamp: '01:00:16',
+          timestamp: '01:00:26',
           text: 'The rain eases to mist. Grisha flutters onto the warm hood of the Moskvitch, spreads his emerald tail, and lets out one clear, ringing morning crow—closing October 1994 in peace.',
         },
         {
           speaker: 'THE ROAD FORWARD',
-          timestamp: '01:00:31',
+          timestamp: '01:00:41',
           text: 'House #14’s key and Grandfather’s last cassette—labeled “Let Go”—rest beside you. You give Grisha one last pat, turn the ignition, and see the open highway stretching straight into daylight.',
         },
       ],
@@ -1294,7 +1882,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     storyLogs: {
       ch1_start: {
         speaker: 'CAR RADIO · 23:59',
-        text: 'Your Moskvitch stalled outside House #14. Restore 2 Fuse Boxes [E] — press [N] anytime to switch cassette tracks.',
+        text: 'Your Moskvitch stalled outside House #14. Restore 2 Fuse Boxes [E] and search the yards for glowing cassette tapes.',
       },
       ch1_fuse_1: {
         speaker: 'SAVELIEV’S LOG · FUSE #14',
@@ -1302,28 +1890,249 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch1_fuse_2: {
         speaker: 'INTERCEPT · HOUSE #11',
-        text: 'Street grid online! Three courtyard relays are humming ahead—they carry the loop override code.',
+        text: 'Street grid online! Relays in Yards #12 and #07 are humming—they carry the Route #404 dispatch signal.',
       },
       ch2_start: {
         speaker: 'TAPE #02 · MIKHAIL SAVELIEV',
-        text: '“I feared tomorrow and trapped us in rain. Break phase on the three green Signal Relays [E].”',
+        text: '“I feared tomorrow and trapped us in rain. Tune both courtyard Signal Relays [E].”',
       },
       ch2_relay_1: {
         speaker: 'SIGNAL RELAY A · YARD #12',
-        text: 'Distant 1994 bus bells echo through the tape—your aim feels steadier as the loop weakens.',
+        text: 'Through tape crackle, you hear bus terminal announcements and Route #404’s horn—the static is clearing.',
       },
       ch2_relay_2: {
         speaker: 'SIGNAL RELAY B · YARD #07',
-        text: '“If I could replay that night, I would have let it go. One last relay in Yard #04!”',
+        text: 'Signal locked on the blind quarter! Streetlamps at Houses #08 & #15 just went dark—reboot their stabilizers.',
       },
-      ch2_relay_3: {
-        speaker: 'SIGNAL RELAY C · YARD #04',
-        text: 'Resonator broken! The central transformer tower is surging—brace to face the Watchman.',
+      ch3_start: {
+        speaker: 'NEIGHBOR · HOUSE #08 · 00:24',
+        text: '“Lights are dead on both sides! Switch on your flashlight [L] and reboot the stabilizers in Yards #08 & #15!”',
+      },
+      ch3_stab_1: {
+        speaker: 'STABILIZER #08',
+        text: 'Frequency climbing—dispatch breaks through: “Bus 404 held safely at Checkpoint 3, all passengers accounted for...”',
+      },
+      ch3_stab_2: {
+        speaker: 'STABILIZER #15',
+        text: 'Both phases aligned! Now shatter the outer mirror boundary at the northern yards and south highway.',
+      },
+      ch4_start: {
+        speaker: 'DISPATCH · 00:38',
+        text: 'The bus survived that night! Activate 3 Perimeter Beacons [E] in Yards #04, #03, and beside your Moskvitch.',
+      },
+      ch4_beacon_1: {
+        speaker: 'BEACON #04 · NORTH-WEST',
+        text: 'Real stars flash briefly above the pines—the magnetic dome is starting to fracture.',
+      },
+      ch4_beacon_2: {
+        speaker: 'BEACON #03 · NORTH-EAST',
+        text: 'Second arc closed! One final mirror beacon waits beside your stalled Moskvitch on the south road.',
+      },
+      ch4_beacon_3: {
+        speaker: 'HIGHWAY MIRROR · SOUTH ROAD',
+        text: 'Perimeter shattered! Every shadow is rushing the central square—prepare for the substation siege!',
+      },
+      ch5_start: {
+        speaker: 'SUBSTATION · 00:50',
+        text: 'Critical resonance! Trip both Ground Couplings [E] flanking the square and survive the surge.',
+      },
+      ch5_core_1: {
+        speaker: 'WEST COUPLING',
+        text: 'Blue arcs spray across the puddles! The transformer drops an octave—trip the eastern coupling.',
+      },
+      ch5_core_2: {
+        speaker: 'EAST COUPLING',
+        text: 'Both couplings blown! Rain hangs still over the square—the Watchman himself is descending.',
       },
       boss_arrival: {
         speaker: 'TRANSFORMER · 00:59',
-        text: 'The Midnight Watchman has entered the square! Shatter his lantern and free Negruzino!',
+        text: 'The Midnight Watchman has entered the square! Shatter his lantern and open the road to the highway!',
       },
+      ...EXTRA_STORY_LOGS_EN,
+    },
+    storyTapes: {
+      tape_01: {
+        code: 'MK-60 #01',
+        title: 'The Last Turn',
+        location: 'Beside the stalled Moskvitch',
+        speaker: 'MOSKVITCH DRIVER · 1994',
+        text: '“The dash clock jumped from 23:59:59 straight back to 23:59:00 again. Wipers scrape the glass, and only one yellow window burns at House #14.”',
+      },
+      tape_02: {
+        code: 'MK-60 #02',
+        title: 'LOOP_00 Schematic',
+        location: 'House #14 porch steps',
+        speaker: 'MIKHAIL SAVELIEV · 14.10.1994',
+        text: '“Wire the reel generator through the step-down transformer and time within a hundred meters gums up like wet tape. I only need one hour until the bus gets in.”',
+      },
+      tape_03: {
+        code: 'MK-60 #03',
+        title: 'Why Grisha Never Froze',
+        location: 'Yard #11 fence corner',
+        speaker: 'MIKHAIL SAVELIEV · LOOP #17',
+        text: '“Clocks stand still, neighbors repeat the same steps, yet Grisha walks free. Maybe because he waits for sunrise instead of yesterday’s storm.”',
+      },
+      tape_04: {
+        code: 'MK-60 #04',
+        title: 'Whispers Behind the Pickets',
+        location: 'Dark Yard #08',
+        speaker: 'NEIGHBOR VASILY · HOUSE #08',
+        text: '“Every rewind wears the oxide thinner. First faces blurred on photos, then folks behind the fences stretched into shades. Don’t listen to their shriek—it’s ruined tape.”',
+      },
+      tape_05: {
+        code: 'MK-60 #05',
+        title: 'Call From Checkpoint 3',
+        location: 'Northern Yard #03',
+        speaker: 'DEPOT DISPATCHER · 06:15',
+        text: '“Hello, Negruzino? Tell Saveliev that Bus #404 waited out the storm at Checkpoint 3—every passenger is safe and drinking hot tea. Why is your line always busy?..”',
+      },
+      tape_06: {
+        code: 'MK-60 #06',
+        title: 'Tape “Let Go”',
+        location: 'Base of the Central Transformer',
+        speaker: 'MIKHAIL SAVELIEV · FINAL LOG',
+        text: '“If you reached the tower, then I have already become part of the shadow guarding it. Show it no hesitation. Shatter the lantern and walk Grisha into sunlight.”',
+      },
+      ...EXTRA_STORY_TAPES_EN,
+    },
+    tapeArchiveHeading: 'Recovered MK-60 Cassette Tapes (Story Dossier)',
+    tapeLockedHint: 'Not recovered yet — search the suburb yards, Bus Depot #4, and Substation Luch-94 for glowing amber cassettes.',
+    tapeCollectPrompt: (title) => `[E] Pick up cassette: “${title}”`,
+    tapeCollectedToast: (title, found, total) => `CASSETTE ${found}/${total}: “${title}”`,
+    tapesCounterLabel: 'TAPES',
+    lanCoopBtn: 'LAN Co-op',
+    lanCoop: {
+      title: 'LAN Co-op · 1994',
+      subtitle: 'Play together over local Wi-Fi / Ethernet — up to 4 survivors in one prep hub and campaign',
+      callsignLabel: 'Your Callsign',
+      serverAddrLabel: 'LAN Server Address (blank = this host)',
+      serverAddrPlaceholder: 'e.g. 192.168.1.42:3000',
+      connectBtn: 'Connect',
+      refreshBtn: 'Refresh',
+      createRoomBtn: 'Host LAN Room',
+      joinRoomBtn: 'Join by Code',
+      roomCodePlaceholder: 'CODE (e.g. 7K4P)',
+      openRoomsHeading: 'Open Rooms on Your LAN',
+      noOpenRooms: 'No open LAN rooms yet — host one and share your code!',
+      yourLanHeading: 'Address for friends on your Wi-Fi / LAN',
+      copyCodeBtn: 'Copy Code',
+      copiedBadge: 'Copied!',
+      readyBtn: 'Ready Up',
+      unreadyBtn: 'Not Ready',
+      startMatchBtn: 'Enter 3D Prep Hub',
+      enterHubBtn: 'Enter 3D Hub',
+      hubRuleHint: 'Your squad enters the sunlit Garage Hub with a firing range and specs stand. The match launches once ALL players board the Moskvitch.',
+      leaveRoomBtn: 'Leave Room',
+      hostTag: 'HOST',
+      readyTag: 'READY',
+      waitingTag: 'WAITING',
+      statusConnected: 'Connected to LAN',
+      statusConnecting: 'Connecting...',
+      statusOffline: 'Server Unreachable',
+      squadHeading: 'LAN SQUAD',
+      revivePrompt: (name) => `[E] Revive Teammate: ${name}`,
+      downedBanner: 'DOWNED · TEAMMATE CAN REVIVE YOU [E]',
+      pingHint: '[G] Squad Ping',
+      pingSentLabel: 'SQUAD PING',
+      scalingBadge: (players, hpMult, dmgMult) => `CO-OP ×${players} · HP ${hpMult} · DMG ${dmgMult}`,
+    },
+    zoneNames: ZONE_NAMES.en,
+    hub: {
+      title: 'SAVELIEV GARAGE · PREP HUB',
+      subtitle: 'Safe Staging Yard · 1994 · Test weapons on the firing range, inspect specs, and board the Moskvitch',
+      freeExploreHint: 'Free movement · Infinite range reserve ammo · Shoot target dummies to test recoil and reload',
+      moskvitchBoardPrompt: '[E] Board Moskvitch-412 (ready to depart)',
+      moskvitchLeavePrompt: '[E] Step out of Moskvitch',
+      moskvitchBoardBtn: 'Board Moskvitch',
+      moskvitchLeaveBtn: 'Step Out',
+      moskvitchCounter: (boarded, total) => `In Moskvitch: ${boarded}/${total}`,
+      moskvitchWaiting: (missing) => `Waiting for squad — ${missing} more to board`,
+      moskvitchLaunching: 'All aboard! Starting the Moskvitch — heading to Negruzino...',
+      terminalPrompt: '[E] Open Arsenal & Tactical Specs Stand',
+      terminalBtn: 'Specs Stand',
+      rangeHint: 'Firing Range: 5 AFK Dummies (10m–22m) · Hits report exact damage & headshots',
+      rangeHitReadout: (dummy, dmg, dist, crit, destroyed) =>
+        `${dummy} (${dist}m): −${dmg} HP${crit ? ' · CRIT!' : ''}${destroyed ? ' · DESTROYED (2.5s respawn)' : ''}`,
+      rangeDummyNames: {
+        crawler: 'Crawler Dummy',
+        lampshade: 'Shade Dummy',
+        screamer: 'Screamer Dummy',
+        heavy: 'Armored Heavy Dummy',
+      },
+      enterHubBtn: 'Enter Prep Hub',
+      quickStartBtn: 'Jump to Chapter 1',
+      ammoInfiniteBadge: 'RANGE · AMMO ∞',
+      zoneTransitionBanner: (zoneName) => `ENTERING SECTOR: ${zoneName}`,
+    },
+    specsModal: {
+      title: 'ARSENAL & TACTICAL SPECS STAND · 1994',
+      subtitle: 'Exact stats for all 5 weapons, .EXE patches, enemy profiles, and co-op difficulty scaling',
+      closeBtn: 'Close Stand',
+      tabWeapons: 'Weapons (5)',
+      tabUpgrades: '.EXE Patches',
+      tabEnemies: 'Enemies & Grisha',
+      tabCoop: 'Co-op Balance',
+      statDamage: 'Damage',
+      statPellets: 'Pellets',
+      statRpm: 'RPM',
+      statMag: 'Mag / Reserve',
+      statReload: 'Reload',
+      statRange: 'Range',
+      statSpecial: 'Role',
+      secSuffix: 's',
+      enemyHpLabel: 'Health',
+      enemySpeedLabel: 'Speed',
+      enemyThreatLabel: 'Behavior & Counterplay',
+      enemyProfiles: [
+        {
+          kind: 'crawler',
+          hp: '78 HP',
+          speed: 'Fast (5.0 m/s)',
+          behavior: 'Rushes along flanks in low bounds and accelerates up close.',
+          counter: 'One-tap with TOZ-194 buckshot or sweep with P90.',
+        },
+        {
+          kind: 'lampshade',
+          hp: '115 HP',
+          speed: 'Medium (4.0 m/s)',
+          behavior: 'Stalks near streetlamps, orbits on an arc, and lands heavy blows.',
+          counter: 'DE-50 or AWP headshots stagger its strike.',
+        },
+        {
+          kind: 'screamer',
+          hp: '92 HP',
+          speed: 'Erratic (4.6 m/s)',
+          behavior: 'Darts from cover and triggers a close-range acoustic screamer.',
+          counter: 'Heed Grisha’s direction crow and drop it before it closes in.',
+        },
+        {
+          kind: 'watchman',
+          hp: '780–1150 HP (Boss)',
+          speed: 'Relentless (3.8 m/s)',
+          behavior: 'Act finale boss (Ch. 6, 12, 18). Unleashes dark surges and heavy charges.',
+          counter: 'Keep moving, snipe the lantern/head with AWP, or shred with GShG-6 Minigun.',
+        },
+      ],
+      roosterCardTitle: 'Grisha the Rooster (Herald of Dawn)',
+      roosterCardDesc:
+        'Grisha flies beside you, crows early with threat direction and distance, and never blocks your sights. Pat him [F] to recover vitality and steady your nerves.',
+      coopIntro:
+        'Difficulty dynamically recalculates whenever players join or leave a co-op session (1–4 survivors):',
+      coopColPlayers: 'Squad',
+      coopColHp: 'Enemy HP',
+      coopColDmg: 'Enemy DMG',
+      coopColSpeed: 'Speed',
+      coopColCaps: 'Cap / Spawn',
+      coopColKills: 'Kill Quota',
+      coopColLoot: 'Drop / Ammo',
+      coopRulesNote:
+        'Cutscene skipping in co-op requires a unanimous squad vote (X/Y). Disconnecting players are automatically removed from both Hub boarding and Cutscene skip quorums.',
+    },
+    cutsceneVote: {
+      voteBtn: 'Vote to Skip',
+      votedBtn: 'Skip Vote Cast',
+      counter: (votes, total) => `Skip cutscene: ${votes}/${total}`,
+      waitingHint: 'Cutscene skips once all active squad members vote',
     },
     characterRanks: [
       'Highway Stranger',
@@ -1336,6 +2145,27 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     levelUpBanner: (level, rank) => `RANK UP · LV. ${level} — ${rank}`,
     nextTrackBtn: 'Next track (N)',
     trackToastPrefix: 'TAPE',
+    hudEditorTitle: 'Touch HUD Layout',
+    hudEditorDesc: 'Drag buttons and the thumbstick anywhere on screen and tune their size separately for portrait and landscape modes.',
+    hudEditorOpenBtn: 'Customize On-Screen Controls',
+    hudEditorSave: 'Save',
+    hudEditorReset: 'Reset',
+    hudEditorCancel: 'Cancel',
+    hudEditorScale: 'Size',
+    hudEditorHint: 'Drag any control to reposition it',
+    hudControlNames: {
+      joystick: 'Joystick',
+      fire: 'Fire',
+      reload: 'Reload',
+      jump: 'Jump',
+      interact: 'Interact',
+      pat: 'Pat',
+      flashlight: 'Flashlight',
+      scope: 'Scope',
+      weapons: 'Weapons',
+    },
+    audioUploading: 'Loading track into storage…',
+    audioUploadError: 'Could not read audio file. Please use MP3, WAV, OGG or M4A under 48 MB.',
   },
 };
 

@@ -5,6 +5,7 @@ import type {
   BipedGaitInput,
   BipedGaitPose,
   CharacterProgressionState,
+  CoopScalingProfile,
   DifficultyId,
   EnemyKind,
   HouseLot,
@@ -16,6 +17,7 @@ import type {
   RoosterMode,
   RoosterNameId,
   SuburbLayout,
+  TapeSpec,
   WeaponAmmoState,
   WeaponId,
 } from './types';
@@ -167,15 +169,34 @@ export function buildSuburbLayout(): SuburbLayout {
     { id: 'lamp_6', x: 5.4, z: -42, armDirX: -1, flickerSeed: 9.2, hasPointLight: false },
   ];
 
-  // Chapter objectives placed cleanly in open yards & street landmarks
+  // Chapter objectives placed cleanly in open yards & street landmarks across Chapters 1–5
   const objectives: ObjectiveSpec[] = [
     // Chapter 1: 2 Street Fuse Boxes
     { id: 'ch1_fuse_1', chapter: 1, label: 'Fuse Box #14 (West Yard)', x: -12.2, z: 29.0, completed: false },
     { id: 'ch1_fuse_2', chapter: 1, label: 'Fuse Box #11 (East Porch)', x: 12.4, z: 14.0, completed: false },
-    // Chapter 2: 3 Courtyard Signal Relays
+    // Chapter 2: 2 Courtyard Signal Relays
     { id: 'ch2_relay_1', chapter: 2, label: 'Signal Relay A (Yard #12)', x: -12.0, z: 14.0, completed: false },
     { id: 'ch2_relay_2', chapter: 2, label: 'Signal Relay B (Yard #07)', x: 12.2, z: -15.0, completed: false },
-    { id: 'ch2_relay_3', chapter: 2, label: 'Signal Relay C (Yard #04)', x: -12.2, z: -34.0, completed: false },
+    // Chapter 3: 2 Dark-Quarter Phase Stabilizers
+    { id: 'ch3_stab_1', chapter: 3, label: 'Phase Stabilizer #08 (Dark Yard)', x: -12.2, z: -16.0, completed: false },
+    { id: 'ch3_stab_2', chapter: 3, label: 'Phase Stabilizer #15 (East Garden)', x: 12.4, z: 30.0, completed: false },
+    // Chapter 4: 3 Outer Perimeter Phase Beacons
+    { id: 'ch4_beacon_1', chapter: 4, label: 'Perimeter Beacon North-W (Yard #04)', x: -12.2, z: -34.0, completed: false },
+    { id: 'ch4_beacon_2', chapter: 4, label: 'Perimeter Beacon North-E (Yard #03)', x: 12.2, z: -34.0, completed: false },
+    { id: 'ch4_beacon_3', chapter: 4, label: 'Highway Mirror Beacon (South Road)', x: 3.4, z: 39.2, completed: false },
+    // Chapter 5: 2 Transformer Square Ground Couplings
+    { id: 'ch5_core_1', chapter: 5, label: 'Substation Ground Coupling West', x: -7.8, z: -4.2, completed: false },
+    { id: 'ch5_core_2', chapter: 5, label: 'Substation Ground Coupling East', x: 7.4, z: 4.5, completed: false },
+  ];
+
+  // 6 Collectible Magnetic Cassette Tapes ("Кассеты Савельева") tucked across porches & landmarks
+  const tapes: TapeSpec[] = [
+    { id: 'tape_01', chapterHint: 1, x: -1.4, z: 38.4, collected: false },   // Beside stalled Moskvitch
+    { id: 'tape_02', chapterHint: 1, x: -13.4, z: 35.6, collected: false }, // House #14 porch steps
+    { id: 'tape_03', chapterHint: 2, x: 13.6, z: 18.2, collected: false },  // House #11 fence corner
+    { id: 'tape_04', chapterHint: 3, x: -13.8, z: -12.2, collected: false }, // Dark House #08 yard
+    { id: 'tape_05', chapterHint: 4, x: 13.4, z: -30.5, collected: false }, // Northern Yard #03
+    { id: 'tape_06', chapterHint: 5, x: -8.2, z: 2.2, collected: false },   // Base of Central Transformer
   ];
 
   return {
@@ -183,6 +204,7 @@ export function buildSuburbLayout(): SuburbLayout {
     lamps,
     colliders,
     objectives,
+    tapes,
     bounds: { minX: -34, maxX: 34, minZ: -48, maxZ: 44 },
     // Spawn on wide central road facing North (yaw = 0 -> looking toward -Z down the street)
     spawn: { x: 0, z: 35, yaw: 0 },
@@ -1352,4 +1374,81 @@ export function computeRoosterGaitPose(inp: RoosterGaitInput): RoosterGaitPose {
     tailPitch: 0.08 * Math.sin(inp.stepPhase * 2) * walkBlend + (inp.mode === 'alert' ? 0.28 : 0),
   };
 }
+
+/**
+ * Dynamic Co-op Difficulty Scaling (1..4 active players).
+ * Scales enemy durability, damage, speed, active cap, spawn pace, chapter kill targets,
+ * and resource drop/refill rates cleanly so solo stays untouched (1.0x) and squads face fair tension.
+ */
+export function computeCoopScaling(rawPlayerCount: number): CoopScalingProfile {
+  const n = Math.max(1, Math.min(4, Math.floor(Number.isFinite(rawPlayerCount) ? rawPlayerCount : 1)));
+  const extra = n - 1;
+  return {
+    playerCount: n,
+    enemyHpMult: Number((1 + extra * 0.35).toFixed(2)),
+    enemyDamageMult: Number((1 + extra * 0.12).toFixed(2)),
+    enemySpeedMult: Number((1 + extra * 0.05).toFixed(2)),
+    maxActiveBonus: extra * 2,
+    spawnRateMult: Number((1 + extra * 0.25).toFixed(2)),
+    killTargetMult: Number((1 + extra * 0.45).toFixed(2)),
+    pickupDropChanceBonus: Number((extra * 0.08).toFixed(2)),
+    ammoRefillMult: Number((1 + extra * 0.3).toFixed(2)),
+  };
+}
+
+export function computeScaledChapterKillTarget(
+  baseKills: number,
+  playerCount: number
+): number {
+  const scaling = computeCoopScaling(playerCount);
+  if (baseKills <= 1) return baseKills;
+  return Math.max(1, Math.ceil(baseKills * scaling.killTargetMult));
+}
+
+/**
+ * Pure hub departure readiness evaluator:
+ * Match starts ONLY when ALL active players in the lobby have boarded the Moskvitch.
+ */
+export function evaluateHubBoarding(
+  boardedIds: ReadonlySet<string>,
+  activePlayerIds: ReadonlyArray<string>
+): { boardedCount: number; totalPlayers: number; allReady: boolean } {
+  const totalPlayers = activePlayerIds.length;
+  if (totalPlayers === 0) {
+    return { boardedCount: 0, totalPlayers: 0, allReady: false };
+  }
+  let boardedCount = 0;
+  for (const id of activePlayerIds) {
+    if (boardedIds.has(id)) boardedCount += 1;
+  }
+  return {
+    boardedCount,
+    totalPlayers,
+    allReady: boardedCount === totalPlayers,
+  };
+}
+
+/**
+ * Pure unanimous cutscene skip evaluator:
+ * In co-op, a cutscene skips ONLY when every active player in the room has voted to skip.
+ */
+export function evaluateCutsceneSkipVote(
+  votedIds: ReadonlySet<string>,
+  activePlayerIds: ReadonlyArray<string>
+): { voteCount: number; totalPlayers: number; shouldSkip: boolean } {
+  const totalPlayers = activePlayerIds.length;
+  if (totalPlayers === 0) {
+    return { voteCount: 0, totalPlayers: 0, shouldSkip: false };
+  }
+  let voteCount = 0;
+  for (const id of activePlayerIds) {
+    if (votedIds.has(id)) voteCount += 1;
+  }
+  return {
+    voteCount,
+    totalPlayers,
+    shouldSkip: voteCount >= totalPlayers,
+  };
+}
+
 

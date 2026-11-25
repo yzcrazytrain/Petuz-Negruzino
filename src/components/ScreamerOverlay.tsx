@@ -18,274 +18,376 @@ export function ScreamerOverlay({
   if (!active || progress <= 0) return null;
 
   const isReduced = intensity === 'reduced';
-  // progress counts down 1 -> 0; elapsed goes 0 -> 1 for a fast lunge into camera
+  // progress counts down 1 -> 0; elapsed goes 0 -> 1 for a violent lunge into the lens
   const elapsed = Math.max(0, Math.min(1, 1 - progress));
+
+  // Sharp, unsettling 2-beat pitch-black strobe splice in full mode so the face
+  // snaps out of total darkness rather than fading in predictably.
+  const isBlackoutBeat =
+    !isReduced &&
+    ((elapsed > 0.055 && elapsed < 0.095) ||
+      (elapsed > 0.23 && elapsed < 0.265) ||
+      (elapsed > 0.52 && elapsed < 0.55));
+
+  // Snap-zoom lunge with sudden micro-jerks toward camera
+  const lungeCurve = Math.pow(elapsed, 0.36);
+  const jerkPulse = isReduced ? 0 : Math.sin(elapsed * 58) * 0.055 * progress;
   const lungeScale = isReduced
     ? 0.92 + elapsed * 0.16
-    : 0.78 + Math.pow(elapsed, 0.55) * 0.68;
+    : 0.62 + lungeCurve * 0.88 + jerkPulse;
+
+  // Uncanny head snap tilt + twitch jitter
+  const headTiltDeg = isReduced
+    ? 0
+    : Math.sin(elapsed * 29) * 6.5 + (elapsed > 0.26 && elapsed < 0.52 ? -9.5 : 4.2);
+  const jitterX = isReduced ? 0 : Math.round(Math.sin(elapsed * 83) * 14 * progress);
+  const jitterY = isReduced ? 0 : Math.round(Math.cos(elapsed * 71) * 10 * progress);
 
   const masterOpacity = isReduced
-    ? Math.min(0.62, progress * 0.95)
-    : Math.min(0.98, Math.pow(progress, 0.45) * 1.15);
+    ? Math.min(0.66, progress * 0.96)
+    : Math.min(0.99, Math.pow(progress, 0.32) * 1.18);
 
-  const flashBurst = !isReduced && elapsed < 0.16 ? 0.52 * (1 - elapsed / 0.16) : 0;
+  // Dramatic under-lit cold-white & blood-crimson strobe bursts
+  const initialFlash =
+    !isReduced && elapsed < 0.06
+      ? 0.72 * (1 - elapsed / 0.06)
+      : !isReduced && elapsed > 0.265 && elapsed < 0.31
+        ? 0.44 * (1 - (elapsed - 0.265) / 0.045)
+        : 0;
 
   const accentColor =
     kind === 'watchman'
       ? '#ff9d3b'
       : kind === 'hollow'
-        ? '#e5d4cf'
+        ? '#e5d8d0'
         : kind === 'fence'
-          ? '#e03535'
-          : '#d83838';
+          ? '#d62828'
+          : '#d12c2c';
 
-  const glowRgba =
+  const underLightRgba =
     kind === 'watchman'
-      ? 'rgba(255, 142, 42, 0.42)'
+      ? 'rgba(255, 128, 34, 0.44)'
       : kind === 'hollow'
-        ? 'rgba(218, 185, 185, 0.36)'
-        : 'rgba(214, 38, 38, 0.46)';
+        ? 'rgba(225, 214, 214, 0.36)'
+        : 'rgba(196, 22, 26, 0.52)';
 
-  const rgbOffset = isReduced ? 2 : Math.round(5 + Math.sin(elapsed * 42) * 5);
+  const rgbOffset = isReduced ? 2 : Math.round(7 + Math.sin(elapsed * 54) * 6);
 
   return (
     <div
       data-testid="screamer-overlay"
       aria-live="assertive"
-      className={`fixed inset-0 z-40 pointer-events-none flex items-center justify-center overflow-hidden bg-[#050204] ${
+      className={`fixed inset-0 z-40 pointer-events-none flex items-center justify-center overflow-hidden bg-[#020103] ${
         isReduced ? '' : 'animate-screamer-shutter'
       }`}
       style={{ opacity: masterOpacity }}
     >
-      {/* Radial crimson/sodium abyss backdrop */}
+      {/* Dramatic horror under-lighting & crushed perimeter vignette */}
       <div
         className="absolute inset-0"
         style={{
-          background: `radial-gradient(circle at 50% 46%, ${glowRgba} 0%, rgba(14, 4, 7, 0.94) 56%, rgba(3, 1, 3, 0.99) 100%)`,
+          background: isBlackoutBeat
+            ? '#020102'
+            : `radial-gradient(ellipse 68% 62% at 50% 56%, ${underLightRgba} 0%, rgba(18, 3, 5, 0.94) 52%, rgba(2, 1, 2, 1) 88%)`,
         }}
       />
 
-      {/* Horizontal analog VHS tracking tear bands */}
+      {/* Heavy VHS tracking distortion lines */}
       <div
-        className="absolute inset-0 opacity-65"
+        className="absolute inset-0 opacity-75"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 2px, transparent 2px, transparent 6px)',
-          transform: `translateY(${Math.round(Math.sin(elapsed * 31) * 10)}px)`,
+            'repeating-linear-gradient(0deg, rgba(255,255,255,0.045) 0px, rgba(255,255,255,0.045) 2px, transparent 2px, transparent 5px)',
+          transform: `translateY(${Math.round(Math.sin(elapsed * 43) * 14)}px)`,
         }}
       />
 
-      {/* Chromatic tear slices */}
-      {!isReduced && (
+      {/* Violent chromatic tear slices */}
+      {!isReduced && !isBlackoutBeat && (
         <>
           <div
-            className="absolute left-0 right-0 h-10 bg-[#ff2a2a]/20 mix-blend-screen"
+            className="absolute left-0 right-0 h-12 bg-[#ff1e1e]/24 mix-blend-screen"
             style={{
-              top: `${22 + Math.round(elapsed * 34)}%`,
-              transform: `translateX(${rgbOffset * 2}px)`,
+              top: `${18 + Math.round(elapsed * 42)}%`,
+              transform: `translateX(${rgbOffset * 2.5}px)`,
             }}
           />
           <div
-            className="absolute left-0 right-0 h-6 bg-[#4de1ff]/15 mix-blend-screen"
+            className="absolute left-0 right-0 h-7 bg-[#6ee7ff]/18 mix-blend-screen"
             style={{
-              top: `${62 - Math.round(elapsed * 24)}%`,
-              transform: `translateX(${-rgbOffset * 2.5}px)`,
+              top: `${68 - Math.round(elapsed * 30)}%`,
+              transform: `translateX(${-rgbOffset * 3}px)`,
+            }}
+          />
+          <div
+            className="absolute left-0 right-0 h-3 bg-[#fff0e0]/22 mix-blend-screen"
+            style={{
+              top: `${44 + Math.round(Math.sin(elapsed * 37) * 18)}%`,
+              transform: `translateX(${rgbOffset * 4}px)`,
             }}
           />
         </>
       )}
 
-      {/* Lunging psychological horror silhouette */}
-      <div
-        className={`relative w-[min(640px,92vw)] h-[min(640px,84vh)] flex items-center justify-center ${
-          isReduced ? '' : 'animate-screamer'
-        }`}
-        style={{
-          transform: `scale(${lungeScale.toFixed(3)})`,
-          filter: `drop-shadow(${rgbOffset}px 0 18px rgba(220, 38, 38, 0.55)) drop-shadow(${-rgbOffset}px 0 14px rgba(80, 210, 255, 0.35))`,
-        }}
-      >
-        <svg
-          viewBox="0 0 400 400"
-          className="w-full h-full"
-          aria-hidden="true"
-        >
-          <defs>
-            <radialGradient id="eyeCore" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#fff8e8" />
-              <stop offset="45%" stopColor={accentColor} />
-              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
-            </radialGradient>
-            <radialGradient id="voidFace" cx="50%" cy="45%" r="55%">
-              <stop offset="0%" stopColor="#1b1419" />
-              <stop offset="70%" stopColor="#080508" />
-              <stop offset="100%" stopColor="#020102" />
-            </radialGradient>
-          </defs>
-
-          {kind === 'watchman' && (
-            <g>
-              {/* Towering iron collar & lantern ribs */}
-              <path
-                d="M72 390 L98 220 L132 165 L268 165 L302 220 L328 390 Z"
-                fill="#070507"
-                stroke="#362218"
-                strokeWidth="3"
-              />
-              {/* Iron crown spikes */}
-              <path
-                d="M124 128 L136 52 L168 106 L200 32 L232 106 L264 52 L276 128 Z"
-                fill="#110b0b"
-                stroke="#6b3e1f"
-                strokeWidth="2.5"
-              />
-              {/* Elongated iron mask */}
-              <path
-                d="M126 122 C126 84 274 84 274 122 L262 252 C248 296 152 296 138 252 Z"
-                fill="url(#voidFace)"
-                stroke="#5b341b"
-                strokeWidth="3"
-              />
-              {/* Burning sodium furnace eye slits */}
-              <ellipse cx="164" cy="176" rx="28" ry="13" fill="url(#eyeCore)" />
-              <ellipse cx="236" cy="176" rx="28" ry="13" fill="url(#eyeCore)" />
-              <rect x="148" y="173" width="32" height="5" rx="2" fill="#fff4d2" />
-              <rect x="220" y="173" width="32" height="5" rx="2" fill="#fff4d2" />
-              {/* Vertical furnace grate mouth */}
-              <path
-                d="M160 226 Q200 212 240 226 L232 266 Q200 278 168 266 Z"
-                fill="#290c05"
-                stroke="#ff9d3b"
-                strokeWidth="2"
-              />
-              <line x1="180" y1="221" x2="180" y2="270" stroke="#080507" strokeWidth="5" />
-              <line x1="200" y1="219" x2="200" y2="272" stroke="#080507" strokeWidth="5" />
-              <line x1="220" y1="221" x2="220" y2="270" stroke="#080507" strokeWidth="5" />
-            </g>
-          )}
-
-          {kind === 'hollow' && (
-            <g>
-              {/* Acoustic shriek rings */}
-              <circle
-                cx="200"
-                cy="205"
-                r={125 + elapsed * 42}
-                fill="none"
-                stroke="#d63b3b"
-                strokeOpacity="0.45"
-                strokeWidth="3"
-              />
-              <circle
-                cx="200"
-                cy="205"
-                r={88 + elapsed * 32}
-                fill="none"
-                stroke="#f5e6e0"
-                strokeOpacity="0.35"
-                strokeWidth="2"
-              />
-              {/* Shroud & gaunt elongated bone skull */}
-              <path
-                d="M84 395 C95 255 110 130 200 64 C290 130 305 255 316 395 Z"
-                fill="#070508"
-              />
-              <path
-                d="M132 138 C132 76 268 76 268 138 C272 222 246 318 200 326 C154 318 128 222 132 138 Z"
-                fill="#d8ccc6"
-                fillOpacity="0.92"
-              />
-              {/* Sunken eye sockets */}
-              <ellipse cx="166" cy="166" rx="22" ry="28" fill="#060306" />
-              <ellipse cx="234" cy="166" rx="22" ry="28" fill="#060306" />
-              <circle cx="166" cy="166" r="8" fill="url(#eyeCore)" />
-              <circle cx="234" cy="166" r="8" fill="url(#eyeCore)" />
-              {/* Gaping screaming vertical maw */}
-              <ellipse cx="200" cy="256" rx="34" ry="56" fill="#040104" />
-              <path
-                d="M174 226 L184 242 L194 224 L204 242 L214 224 L226 238"
-                fill="none"
-                stroke="#cbbdb5"
-                strokeWidth="3"
-              />
-            </g>
-          )}
-
-          {kind === 'fence' && (
-            <g>
-              {/* Broken wooden picket silhouette in foreground */}
-              <path
-                d="M18 395 L28 190 L50 156 L68 195 L64 395 M332 395 L328 188 L352 152 L374 192 L382 395"
-                fill="#110b08"
-                stroke="#2c1b12"
-                strokeWidth="2"
-              />
-              {/* Feral lunging crawler skull & clawed hands */}
-              <path
-                d="M116 146 C126 88 274 88 284 146 L296 232 C276 292 124 292 104 232 Z"
-                fill="url(#voidFace)"
-                stroke="#4a1618"
-                strokeWidth="3"
-              />
-              {/* Dilated predator eyes */}
-              <ellipse cx="158" cy="176" rx="28" ry="18" fill="url(#eyeCore)" />
-              <ellipse cx="242" cy="176" rx="28" ry="18" fill="url(#eyeCore)" />
-              <circle cx="158" cy="176" r="5" fill="#180202" />
-              <circle cx="242" cy="176" r="5" fill="#180202" />
-              {/* Jagged grin */}
-              <path
-                d="M136 232 Q200 264 264 232 Q200 296 136 232 Z"
-                fill="#030102"
-                stroke="#8c2323"
-                strokeWidth="2.5"
-              />
-              <path
-                d="M148 238 L160 256 L172 242 L186 262 L200 244 L214 262 L228 242 L240 256 L252 238"
-                fill="none"
-                stroke="#e8ded5"
-                strokeWidth="3"
-              />
-            </g>
-          )}
-
-          {(kind === 'fog' || kind === 'preview') && (
-            <g>
-              {/* Shadowy apparition emerging from night mist */}
-              <path
-                d="M66 398 C84 252 108 92 200 72 C292 92 316 252 334 398 Z"
-                fill="url(#voidFace)"
-              />
-              {/* Unsettling asymmetric dilated eyes */}
-              <ellipse cx="158" cy="172" rx="34" ry="22" fill="url(#eyeCore)" />
-              <ellipse cx="242" cy="168" rx="30" ry="20" fill="url(#eyeCore)" />
-              <circle cx="158" cy="172" r="7" fill="#090204" />
-              <circle cx="242" cy="168" r="6" fill="#090204" />
-              {/* Fractured static mouth */}
-              <path
-                d="M144 244 L172 236 L200 254 L228 236 L256 248 L244 274 L200 266 L156 274 Z"
-                fill="#020102"
-                stroke="#c93b3b"
-                strokeWidth="2.2"
-              />
-            </g>
-          )}
-        </svg>
-      </div>
-
-      {/* Initial camera shutter flash */}
-      {flashBurst > 0.01 && (
+      {/* High-contrast anatomical nightmare lunge */}
+      {!isBlackoutBeat && (
         <div
-          className="absolute inset-0 bg-[#fff3e6]"
-          style={{ opacity: flashBurst }}
+          className={`relative w-[min(680px,96vw)] h-[min(680px,88vh)] flex items-center justify-center ${
+            isReduced ? '' : 'animate-screamer'
+          }`}
+          style={{
+            transform: `translate(${jitterX}px, ${jitterY}px) scale(${lungeScale.toFixed(3)}) rotate(${headTiltDeg.toFixed(1)}deg)`,
+            filter: `contrast(${isReduced ? 1.08 : 1.28}) drop-shadow(${rgbOffset}px 0 18px rgba(215, 28, 28, 0.65)) drop-shadow(${-rgbOffset}px 0 14px rgba(120, 220, 255, 0.32))`,
+          }}
+        >
+          <svg
+            viewBox="0 0 400 400"
+            className="w-full h-full"
+            aria-hidden="true"
+          >
+            <defs>
+              <radialGradient id="eyeCore" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#fffdf6" />
+                <stop offset="32%" stopColor={accentColor} />
+                <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+              </radialGradient>
+              <radialGradient id="boneFace" cx="50%" cy="42%" r="56%">
+                <stop offset="0%" stopColor="#d9cfc5" />
+                <stop offset="48%" stopColor="#8d817b" />
+                <stop offset="82%" stopColor="#261e20" />
+                <stop offset="100%" stopColor="#050304" />
+              </radialGradient>
+              <radialGradient id="voidFace" cx="50%" cy="44%" r="56%">
+                <stop offset="0%" stopColor="#2a1d20" />
+                <stop offset="56%" stopColor="#0d080a" />
+                <stop offset="100%" stopColor="#020102" />
+              </radialGradient>
+              <radialGradient id="furnaceMaw" cx="50%" cy="50%" r="55%">
+                <stop offset="0%" stopColor="#ffbb55" />
+                <stop offset="48%" stopColor="#9e2a0c" />
+                <stop offset="100%" stopColor="#120402" />
+              </radialGradient>
+            </defs>
+
+            {kind === 'watchman' && (
+              <g>
+                {/* Looming iron substation mantle & ribbed lantern shoulders */}
+                <path
+                  d="M42 400 L78 205 L124 148 L276 148 L322 205 L358 400 Z"
+                  fill="#060406"
+                  stroke="#452716"
+                  strokeWidth="3.5"
+                />
+                {/* Jagged lightning-rod crown spikes */}
+                <path
+                  d="M116 122 L128 38 L164 100 L200 18 L236 100 L272 38 L284 122 Z"
+                  fill="#120a09"
+                  stroke="#8c4f24"
+                  strokeWidth="2.8"
+                />
+                {/* Riveted iron furnace mask with heat fissures */}
+                <path
+                  d="M118 112 C118 68 282 68 282 112 L268 262 C252 316 148 316 132 262 Z"
+                  fill="url(#voidFace)"
+                  stroke="#6f3a1c"
+                  strokeWidth="3.5"
+                />
+                <path
+                  d="M150 116 L168 152 L158 208 M250 116 L232 152 L242 208 M200 94 L200 162"
+                  fill="none"
+                  stroke="#3b1d10"
+                  strokeWidth="2.5"
+                />
+                {/* Blinding recessed sodium furnace eye slits */}
+                <path d="M132 162 L188 170 L182 186 L136 182 Z" fill="#050202" />
+                <path d="M268 162 L212 170 L218 186 L264 182 Z" fill="#050202" />
+                <ellipse cx="160" cy="175" rx="28" ry="11" fill="url(#eyeCore)" />
+                <ellipse cx="240" cy="175" rx="28" ry="11" fill="url(#eyeCore)" />
+                <circle cx="162" cy="175" r="3.2" fill="#180502" />
+                <circle cx="238" cy="175" r="3.2" fill="#180502" />
+                {/* Screaming furnace grate maw with molten ribs */}
+                <path
+                  d="M148 220 Q200 202 252 220 L242 284 Q200 304 158 284 Z"
+                  fill="url(#furnaceMaw)"
+                  stroke="#ff9d3b"
+                  strokeWidth="2.5"
+                />
+                <line x1="170" y1="214" x2="172" y2="290" stroke="#080405" strokeWidth="6" />
+                <line x1="190" y1="210" x2="190" y2="295" stroke="#080405" strokeWidth="6" />
+                <line x1="210" y1="210" x2="210" y2="295" stroke="#080405" strokeWidth="6" />
+                <line x1="230" y1="214" x2="228" y2="290" stroke="#080405" strokeWidth="6" />
+              </g>
+            )}
+
+            {kind === 'hollow' && (
+              <g>
+                {/* Shattering acoustic shockwave rings */}
+                <circle
+                  cx="200"
+                  cy="205"
+                  r={122 + elapsed * 58}
+                  fill="none"
+                  stroke="#d62828"
+                  strokeOpacity="0.55"
+                  strokeWidth="3.5"
+                />
+                <circle
+                  cx="200"
+                  cy="205"
+                  r={84 + elapsed * 40}
+                  fill="none"
+                  stroke="#f5e6e0"
+                  strokeOpacity="0.4"
+                  strokeWidth="2"
+                />
+                {/* Gaunt ragged shroud & elongated cracked skull */}
+                <path
+                  d="M58 400 C74 242 96 108 200 44 C304 108 326 242 342 400 Z"
+                  fill="#050306"
+                />
+                <path
+                  d="M124 126 C124 58 276 58 276 126 C282 224 252 344 200 354 C148 344 118 224 124 126 Z"
+                  fill="url(#boneFace)"
+                />
+                {/* Skull cracks & tear streaks */}
+                <path
+                  d="M158 92 L166 128 L154 148 M236 88 L228 122 L244 142 M162 192 L156 244 M238 192 L244 244"
+                  fill="none"
+                  stroke="#18080a"
+                  strokeWidth="2.5"
+                />
+                {/* Deep hollow blackened eye sockets with tiny pinprick irises */}
+                <ellipse cx="162" cy="158" rx="26" ry="34" fill="#030104" />
+                <ellipse cx="238" cy="158" rx="26" ry="34" fill="#030104" />
+                <circle cx="164" cy="160" r="8.5" fill="url(#eyeCore)" />
+                <circle cx="236" cy="160" r="8.5" fill="url(#eyeCore)" />
+                <circle cx="164" cy="160" r="2.6" fill="#060103" />
+                <circle cx="236" cy="160" r="2.6" fill="#060103" />
+                {/* Nasal cavity */}
+                <path d="M194 198 L200 182 L206 198 L200 204 Z" fill="#090406" />
+                {/* Dislocated vertical screaming abyssal jaw + jagged teeth */}
+                <ellipse cx="200" cy="272" rx="42" ry="68" fill="#030103" stroke="#521619" strokeWidth="2.5" />
+                <path
+                  d="M164 232 L173 252 L182 228 L191 254 L200 226 L209 254 L218 228 L227 252 L236 232"
+                  fill="none"
+                  stroke="#e3d6cc"
+                  strokeWidth="3.2"
+                />
+                <path
+                  d="M170 314 L180 294 L190 318 L200 292 L210 318 L220 294 L230 314"
+                  fill="none"
+                  stroke="#bfb0a6"
+                  strokeWidth="2.8"
+                />
+              </g>
+            )}
+
+            {kind === 'fence' && (
+              <g>
+                {/* Lunging clawed hands grabbing both sides of the viewport */}
+                <path
+                  d="M0 398 L22 250 L48 164 L62 174 L46 244 L76 156 L92 168 L68 258 L98 184 L112 196 L82 288 L72 398 Z"
+                  fill="#0a0507"
+                  stroke="#421417"
+                  strokeWidth="2.5"
+                />
+                <path
+                  d="M400 398 L378 250 L352 164 L338 174 L354 244 L324 156 L308 168 L332 258 L302 184 L288 196 L318 288 L328 398 Z"
+                  fill="#0a0507"
+                  stroke="#421417"
+                  strokeWidth="2.5"
+                />
+                {/* Feral predator head plunging right into camera */}
+                <path
+                  d="M106 138 C116 74 284 74 294 138 L308 242 C286 314 114 314 92 242 Z"
+                  fill="url(#voidFace)"
+                  stroke="#5e171b"
+                  strokeWidth="3.5"
+                />
+                {/* Asymmetric bloodshot predator eyes */}
+                <ellipse cx="154" cy="170" rx="30" ry="20" fill="#050102" />
+                <ellipse cx="246" cy="166" rx="30" ry="20" fill="#050102" />
+                <ellipse cx="154" cy="170" rx="22" ry="13" fill="url(#eyeCore)" />
+                <ellipse cx="246" cy="166" rx="22" ry="13" fill="url(#eyeCore)" />
+                <circle cx="156" cy="170" r="4" fill="#0e0101" />
+                <circle cx="244" cy="166" r="4" fill="#0e0101" />
+                {/* Wide split-cheeked fang snarl */}
+                <path
+                  d="M122 228 Q200 266 278 228 Q200 322 122 228 Z"
+                  fill="#030002"
+                  stroke="#9c1c20"
+                  strokeWidth="3"
+                />
+                <path
+                  d="M134 236 L146 262 L158 240 L172 270 L186 244 L200 274 L214 244 L228 270 L242 240 L254 262 L266 236"
+                  fill="none"
+                  stroke="#efe6dd"
+                  strokeWidth="3.4"
+                />
+                <path
+                  d="M150 282 L164 262 L180 288 L200 266 L220 288 L236 262 L250 282"
+                  fill="none"
+                  stroke="#c8b8ae"
+                  strokeWidth="2.8"
+                />
+              </g>
+            )}
+
+            {(kind === 'fog' || kind === 'preview') && (
+              <g>
+                {/* Shadow apparition lunging out of wet midnight fog */}
+                <path
+                  d="M46 400 C68 238 98 76 200 54 C302 76 332 238 354 400 Z"
+                  fill="url(#voidFace)"
+                />
+                {/* Ghostly pallid face silhouette emerging from darkness */}
+                <path
+                  d="M132 132 C136 82 264 82 268 132 C272 214 248 298 200 314 C152 298 128 214 132 132 Z"
+                  fill="url(#boneFace)"
+                  fillOpacity="0.48"
+                />
+                {/* Uncanny wide unblinking eyes with tiny pinprick pupils */}
+                <ellipse cx="156" cy="166" rx="34" ry="24" fill="#040103" />
+                <ellipse cx="244" cy="160" rx="31" ry="22" fill="#040103" />
+                <ellipse cx="156" cy="166" rx="22" ry="15" fill="url(#eyeCore)" />
+                <ellipse cx="244" cy="160" rx="20" ry="14" fill="url(#eyeCore)" />
+                <circle cx="158" cy="166" r="3.6" fill="#050102" />
+                <circle cx="242" cy="160" r="3.4" fill="#050102" />
+                {/* Fractured wide screaming mouth */}
+                <path
+                  d="M138 238 L168 228 L200 246 L232 228 L262 240 L248 292 L200 306 L152 292 Z"
+                  fill="#020002"
+                  stroke="#b82428"
+                  strokeWidth="2.6"
+                />
+                <path
+                  d="M150 242 L162 262 L176 238 L190 264 L204 240 L218 264 L232 238 L248 260"
+                  fill="none"
+                  stroke="#dfd3ca"
+                  strokeWidth="3"
+                />
+              </g>
+            )}
+          </svg>
+        </div>
+      )}
+
+      {/* Sudden cold-white / crimson camera flash burst */}
+      {initialFlash > 0.01 && (
+        <div
+          className="absolute inset-0 bg-[#fff2e8]"
+          style={{ opacity: initialFlash }}
         />
       )}
 
       {/* Atmospheric horror caption */}
-      <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-[min(680px,92vw)] text-center px-4">
-        <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.18em] text-[#ece7dc] uppercase hud-text-shadow">
-          {caption}
+      {!isBlackoutBeat && (
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[min(680px,92vw)] text-center px-4">
+          <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.2em] text-[#ece7dc] uppercase hud-text-shadow">
+            {caption}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

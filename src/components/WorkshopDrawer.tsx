@@ -5,6 +5,7 @@ import {
   Globe,
   HardDriveDownload,
   Keyboard,
+  Move,
   Music,
   Paintbrush,
   Play,
@@ -22,7 +23,7 @@ import {
   WEAPON_ORDER,
   WEAPONS,
 } from '../game/constants';
-import { localizeRoosterCopy, TRANSLATIONS } from '../game/i18n';
+import { localizeRoosterCopy, stripPcKeyHints, TRANSLATIONS } from '../game/i18n';
 import {
   BINDABLE_ACTION_ORDER,
   formatBindingLabel,
@@ -54,6 +55,9 @@ interface WorkshopDrawerProps {
   initialTab?: WorkshopTabId;
   screamerIntensity: ScreamerIntensity;
   musicSettings: MusicSettings;
+  collectedTapes: string[];
+  isTouchDevice?: boolean;
+  onOpenHudEditor?: () => void;
   onChangeLanguage: (lang: Language) => void;
   onChangeRoosterName: (name: RoosterNameId) => void;
   onChangeDifficulty: (difficulty: DifficultyId) => void;
@@ -94,6 +98,9 @@ export function WorkshopDrawer({
   initialTab = 'music',
   screamerIntensity,
   musicSettings,
+  collectedTapes,
+  isTouchDevice = false,
+  onOpenHudEditor,
   onChangeLanguage,
   onChangeRoosterName,
   onChangeDifficulty,
@@ -120,6 +127,7 @@ export function WorkshopDrawer({
   const [tab, setTab] = useState<WorkshopTabId>(initialTab);
   const [activePack, setActivePack] = useState('classic_1994');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
   const [listeningAction, setListeningAction] = useState<BindableAction | null>(null);
 
   useEffect(() => {
@@ -206,13 +214,21 @@ export function WorkshopDrawer({
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
-    await onAddCustomMusicFiles(files);
-    setStatusMessage(
-      files.length === 1
-        ? t.msgLoadedAudio(files[0].name)
-        : t.cassetteTracksLoaded(files.length)
-    );
     e.target.value = '';
+    setUploadingAudio(true);
+    setStatusMessage(t.audioUploading);
+    try {
+      await onAddCustomMusicFiles(files);
+      const rawMsg =
+        files.length === 1
+          ? t.msgLoadedAudio(files[0].name)
+          : t.cassetteTracksLoaded(files.length);
+      setStatusMessage(isTouchDevice ? stripPcKeyHints(rawMsg) : rawMsg);
+    } catch {
+      setStatusMessage(t.audioUploadError);
+    } finally {
+      setUploadingAudio(false);
+    }
   };
 
   return (
@@ -304,19 +320,26 @@ export function WorkshopDrawer({
                       <span>{t.cassetteDeckHeading}</span>
                     </div>
                     <p className="text-xs text-[#c7cfd9] mt-1.5 leading-relaxed">
-                      {t.cassetteDeckNote}
+                      {isTouchDevice ? stripPcKeyHints(t.cassetteDeckNote) : t.cassetteDeckNote}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="px-3.5 py-2 rounded bg-[#e8963a] text-[#0b0f17] font-mono-num text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 hover:bg-[#f2a853] transition-colors cursor-pointer">
+                  <label
+                    className={`px-3.5 py-2 rounded bg-[#e8963a] text-[#0b0f17] font-mono-num text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors ${
+                      uploadingAudio
+                        ? 'opacity-60 pointer-events-none'
+                        : 'hover:bg-[#f2a853] cursor-pointer'
+                    }`}
+                  >
                     <Upload className="w-3.5 h-3.5 shrink-0" />
-                    <span>{t.cassetteAddFiles}</span>
+                    <span>{uploadingAudio ? t.audioUploading : t.cassetteAddFiles}</span>
                     <input
                       type="file"
                       accept="audio/*"
                       multiple
+                      disabled={uploadingAudio}
                       onChange={handleAudioUpload}
                       className="hidden"
                     />
@@ -874,74 +897,100 @@ export function WorkshopDrawer({
                 </div>
               </div>
 
-              {/* Rebindable Keyboard & Mouse Side-Button (M4 / M5) Controls */}
-              <div
-                data-testid="keybinds-panel"
-                className="p-4 rounded bg-[#121926] border border-[#e8963a]/30 space-y-3"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              {/* Mobile Touch HUD Editor Card (Touch) vs PC Keyboard & Mouse Rebind Panel (Desktop) */}
+              {isTouchDevice ? (
+                <div
+                  data-testid="mobile-hud-editor-card"
+                  className="p-4 rounded bg-[#121926] border border-[#e8963a]/35 space-y-3"
+                >
                   <div>
                     <div className="flex items-center gap-2 text-xs font-mono-num uppercase tracking-wider text-[#e8963a] font-semibold">
-                      <Keyboard className="w-3.5 h-3.5" />
-                      <span>{t.controlsHeading}</span>
+                      <Move className="w-3.5 h-3.5" />
+                      <span>{t.hudEditorTitle}</span>
                     </div>
                     <p className="text-xs text-[#9aa3b0] mt-1 leading-relaxed">
-                      {t.controlsDesc}
+                      {t.hudEditorDesc}
                     </p>
                   </div>
                   <button
                     type="button"
-                    data-testid="reset-keybinds-btn"
-                    onClick={() => {
-                      setListeningAction(null);
-                      onResetKeybinds();
-                    }}
-                    className="px-2.5 py-1.5 rounded border border-[#ece7dc]/18 bg-[#0b1019] text-[11px] font-mono-num uppercase tracking-wider text-[#9aa3b0] hover:border-[#e8963a] hover:text-[#e8963a] inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                    data-testid="open-hud-editor-btn"
+                    onClick={() => onOpenHudEditor?.()}
+                    className="w-full py-2.5 px-4 rounded bg-[#e8963a] text-[#0b0f17] font-display text-sm font-bold tracking-wider uppercase inline-flex items-center justify-center gap-2 hover:bg-[#f2a853] transition-colors cursor-pointer"
                   >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>{t.controlsResetBtn}</span>
+                    <Move className="w-4 h-4 shrink-0" />
+                    <span>{t.hudEditorOpenBtn}</span>
                   </button>
                 </div>
+              ) : (
+                <div
+                  data-testid="keybinds-panel"
+                  className="p-4 rounded bg-[#121926] border border-[#e8963a]/30 space-y-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-mono-num uppercase tracking-wider text-[#e8963a] font-semibold">
+                        <Keyboard className="w-3.5 h-3.5" />
+                        <span>{t.controlsHeading}</span>
+                      </div>
+                      <p className="text-xs text-[#9aa3b0] mt-1 leading-relaxed">
+                        {t.controlsDesc}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="reset-keybinds-btn"
+                      onClick={() => {
+                        setListeningAction(null);
+                        onResetKeybinds();
+                      }}
+                      className="px-2.5 py-1.5 rounded border border-[#ece7dc]/18 bg-[#0b1019] text-[11px] font-mono-num uppercase tracking-wider text-[#9aa3b0] hover:border-[#e8963a] hover:text-[#e8963a] inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>{t.controlsResetBtn}</span>
+                    </button>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {BINDABLE_ACTION_ORDER.map((action) => {
-                    const isListening = listeningAction === action;
-                    const label = localizeRoosterCopy(
-                      t.bindActions[action],
-                      language,
-                      roosterName
-                    );
-                    return (
-                      <button
-                        key={action}
-                        type="button"
-                        data-rebind-action={action}
-                        onClick={() =>
-                          setListeningAction(isListening ? null : action)
-                        }
-                        className={`flex items-center justify-between gap-2 px-3 py-2 rounded border text-left transition-colors cursor-pointer ${
-                          isListening
-                            ? 'bg-[#2a1d10] border-[#e8963a] text-[#fff2de]'
-                            : 'bg-[#0b1019] border-[#ece7dc]/14 text-[#ece7dc] hover:border-[#e8963a]/60'
-                        }`}
-                      >
-                        <span className="text-xs truncate">{label}</span>
-                        <span
-                          className={`px-2 py-0.5 rounded font-mono-num text-[11px] font-bold shrink-0 ${
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {BINDABLE_ACTION_ORDER.map((action) => {
+                      const isListening = listeningAction === action;
+                      const label = localizeRoosterCopy(
+                        t.bindActions[action],
+                        language,
+                        roosterName
+                      );
+                      return (
+                        <button
+                          key={action}
+                          type="button"
+                          data-rebind-action={action}
+                          onClick={() =>
+                            setListeningAction(isListening ? null : action)
+                          }
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded border text-left transition-colors cursor-pointer ${
                             isListening
-                              ? 'bg-[#e8963a] text-[#0b0f17] animate-pulse'
-                              : 'bg-[#1a2334] border border-[#ece7dc]/16 text-[#e8963a]'
+                              ? 'bg-[#2a1d10] border-[#e8963a] text-[#fff2de]'
+                              : 'bg-[#0b1019] border-[#ece7dc]/14 text-[#ece7dc] hover:border-[#e8963a]/60'
                           }`}
                         >
-                          {isListening
-                            ? t.controlsListening
-                            : formatBindingLabel(keybinds[action], language)}
-                        </span>
-                      </button>
-                    );
-                  })}
+                          <span className="text-xs truncate">{label}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded font-mono-num text-[11px] font-bold shrink-0 ${
+                              isListening
+                                ? 'bg-[#e8963a] text-[#0b0f17] animate-pulse'
+                                : 'bg-[#1a2334] border border-[#ece7dc]/16 text-[#e8963a]'
+                            }`}
+                          >
+                            {isListening
+                              ? t.controlsListening
+                              : formatBindingLabel(keybinds[action], language)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Standalone Offline HTML & Desktop Electron .EXE Export Card */}
               <div className="p-4 rounded bg-[#121926] border border-[#e8963a]/30 space-y-3">
@@ -973,6 +1022,63 @@ export function WorkshopDrawer({
                     <HardDriveDownload className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">{t.downloadDesktopBtn}</span>
                   </a>
+                </div>
+              </div>
+
+              {/* Recovered MK-60 Story Cassette Tapes Dossier */}
+              <div
+                data-testid="story-tapes-dossier"
+                className="p-4 rounded bg-[#121926] border border-[#e8963a]/30 space-y-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-mono-num uppercase tracking-wider text-[#e8963a] font-semibold">
+                    <Disc3 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{t.tapeArchiveHeading}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-[#0b1019] border border-[#e8963a]/40 font-mono-num text-[11px] font-bold text-[#e8963a]">
+                    {collectedTapes.length} / {Object.keys(t.storyTapes).length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(t.storyTapes).map(([tapeId, meta]) => {
+                    const unlocked = collectedTapes.includes(tapeId);
+                    return (
+                      <div
+                        key={tapeId}
+                        data-tape-id={tapeId}
+                        className={`p-3 rounded border space-y-1 ${
+                          unlocked
+                            ? 'bg-[#172132] border-[#e8963a]/45'
+                            : 'bg-[#0c111b] border-[#ece7dc]/10 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-mono-num uppercase tracking-wider">
+                          <span className={unlocked ? 'text-[#e8963a] font-bold' : 'text-[#9aa3b0]'}>
+                            {meta.code}
+                          </span>
+                          <span className="text-[#9aa3b0] truncate">{meta.location}</span>
+                        </div>
+                        <div className="text-xs font-semibold text-[#ece7dc]">
+                          {unlocked ? loc(meta.title) : '???'}
+                        </div>
+                        {unlocked ? (
+                          <>
+                            <div className="text-[10px] font-mono-num text-[#5fa88e] uppercase">
+                              {loc(meta.speaker)}
+                            </div>
+                            <p className="text-[11px] text-[#d5dce6] leading-relaxed">
+                              {loc(meta.text)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-[11px] text-[#7f8999] leading-snug">
+                            {t.tapeLockedHint}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
