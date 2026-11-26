@@ -72,7 +72,9 @@ import {
   computeCharacterProgression,
   computeComboMultiplier,
   computeCoopScaling,
+  computeCoopSlotSpawnOffset,
   computeDifficultyScaledEnemyStats,
+  computeDistanceEyeIntensity,
   computeEnemySteering,
   computeLoopScaling,
   computeRoosterGaitPose,
@@ -201,9 +203,8 @@ const NEGRUZINO_CINEMATIC_SHADER = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
     uTime: { value: 0 },
-    uChromatic: { value: 0.0008 },
-    uVignette: { value: 0.38 },
-    uGrain: { value: 0.024 },
+    uVignette: { value: 0.36 },
+    uGrain: { value: 0.02 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -215,7 +216,6 @@ const NEGRUZINO_CINEMATIC_SHADER = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float uTime;
-    uniform float uChromatic;
     uniform float uVignette;
     uniform float uGrain;
     varying vec2 vUv;
@@ -227,30 +227,16 @@ const NEGRUZINO_CINEMATIC_SHADER = {
     void main() {
       vec2 center = vUv - 0.5;
       float dist = length(center);
-      vec2 offset = center * dist * uChromatic * 5.5;
 
-      float r = texture2D(tDiffuse, vUv + offset).r;
-      float g = texture2D(tDiffuse, vUv).g;
-      float b = texture2D(tDiffuse, vUv - offset).b;
-      vec3 col = vec3(r, g, b);
-
-      // Subtle 35mm horizontal anamorphic lens flare bleed (softened to prevent harsh glare bars)
-      vec3 streak = vec3(0.0);
-      for (int i = -2; i <= 2; i++) {
-        if (i == 0) continue;
-        vec2 su = clamp(vUv + vec2(float(i) * 0.011, 0.0), 0.002, 0.998);
-        vec3 s = texture2D(tDiffuse, su).rgb;
-        float hot = max(0.0, max(s.r, max(s.g, s.b)) - 0.92);
-        streak += s * hot * 0.055;
-      }
-      col += streak * vec3(1.04, 0.88, 0.74);
+      // Clean single-tap optical sampling (no RGB channel tripling, no horizontal anamorphic streaks)
+      vec3 col = texture2D(tDiffuse, vUv).rgb;
 
       // Cinematic midnight steel-blue shadows / warm sodium highlights split-tone + micro-contrast
       float lum = dot(col, vec3(0.299, 0.587, 0.114));
-      vec3 coolShadow = vec3(0.91, 0.96, 1.07);
-      vec3 warmHigh = vec3(1.06, 0.99, 0.91);
+      vec3 coolShadow = vec3(0.92, 0.96, 1.06);
+      vec3 warmHigh = vec3(1.05, 0.99, 0.92);
       col *= mix(coolShadow, warmHigh, smoothstep(0.14, 0.76, lum));
-      col = mix(col, col * col * (3.0 - 2.0 * clamp(col, 0.0, 1.0)), 0.14);
+      col = mix(col, col * col * (3.0 - 2.0 * clamp(col, 0.0, 1.0)), 0.12);
 
       // Organic 35mm film grain
       float n = (rand(vUv * 512.0 + fract(uTime)) - 0.5) * uGrain;
@@ -475,6 +461,7 @@ export class NegruzinoEngine {
 
   // AAA Post-Processing (Hardware GPU path) + Atmospheric Mist Motes + Light Drizzle + Road Splashes
   private composer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
   private cinematicPass: ShaderPass | null = null;
   private mistMotes: THREE.Points | null = null;
   private rainLines: THREE.LineSegments | null = null;
@@ -904,7 +891,7 @@ export class NegruzinoEngine {
     }
     this.scene.add(this.particleMesh);
 
-    // AAA GPU Post-Processing (Bloom + 35mm Filmic Horror Color/Grain/Chromatic Pass)
+    // AAA GPU Post-Processing (Soft circular isotropic Bloom + 35mm Filmic Color/Grain Pass)
     if (!this.isSoftwareGl) {
       const w = container.clientWidth || window.innerWidth;
       const h = Math.max(1, container.clientHeight || window.innerHeight);
@@ -913,9 +900,11 @@ export class NegruzinoEngine {
         samples: 4,
       });
       this.composer = new EffectComposer(this.renderer, rt);
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.setSize(w, h);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.24, 0.48, 0.92);
-      this.composer.addPass(bloom);
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.19, 0.36, 0.96);
+      this.composer.addPass(this.bloomPass);
       this.cinematicPass = new ShaderPass(NEGRUZINO_CINEMATIC_SHADER);
       this.composer.addPass(this.cinematicPass);
       this.composer.addPass(new OutputPass());
@@ -1194,6 +1183,10 @@ export class NegruzinoEngine {
     }
 
     this.addZoneObjectivesAndTapes(this.worldGroup);
+
+    if (this.coopPartners.size > 0) {
+      this.resetCoopPartnerPositionsToSpawn();
+    }
   }
 
   private addPerimeterForest(
@@ -2077,18 +2070,24 @@ export class NegruzinoEngine {
     this.deviceProfile = readBrowserDeviceProfile();
     const w = this.container.clientWidth || window.innerWidth;
     const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    this.renderer.setPixelRatio(
-      this.isSoftwareGl
-        ? 1
-        : Math.min(window.devicePixelRatio, this.deviceProfile.maxPixelRatio)
-    );
+    const pr = this.isSoftwareGl
+      ? 1
+      : Math.min(window.devicePixelRatio, this.deviceProfile.maxPixelRatio);
+    this.renderer.setPixelRatio(pr);
     this.camera.aspect = w / h;
     if (!this.isScoped) {
       this.camera.fov = this.deviceProfile.recommendedFov;
     }
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
-    this.composer?.setSize(w, h);
+    if (this.composer) {
+      this.composer.setPixelRatio(pr);
+      this.composer.setSize(w, h);
+    }
+    if (this.bloomPass) {
+      this.bloomPass.setSize(w, h);
+      this.bloomPass.resolution.set(w, h);
+    }
     this.emitHud();
   };
 
@@ -2502,20 +2501,19 @@ export class NegruzinoEngine {
     this.flashlight.intensity = 0;
     this.exeCorruption = 0;
 
-    // Offset co-op teammates slightly in the garage courtyard so players never overlap
+    // Offset co-op teammates cleanly around the Hub courtyard spawn so players never overlap
     const myIdx = Math.max(0, room.players.findIndex((p) => p.id === myId));
-    if (myIdx > 0) {
-      const side = myIdx % 2 === 1 ? 1 : -1;
-      const row = Math.ceil(myIdx / 2);
-      this.playerX = this.layout.spawn.x + side * 2.1;
-      this.playerZ = this.layout.spawn.z + row * 1.4;
-    }
+    const myOff = computeCoopSlotSpawnOffset(myIdx);
+    this.playerX = this.layout.spawn.x + myOff.dx;
+    this.playerZ = this.layout.spawn.z + myOff.dz;
 
     this.phase = 'hub';
     this.heldKeys.clear();
     this.heldMouseButtons.clear();
     this.mouseDown = false;
     this.syncCoopPartnersFromRoom(room);
+    this.resetCoopPartnerPositionsToSpawn();
+    this.broadcastLocalCoopStateNow();
     this.customStoryLog = {
       speaker: TRANSLATIONS[this.lang].hub.title,
       text: TRANSLATIONS[this.lang].hub.subtitle,
@@ -3088,15 +3086,12 @@ export class NegruzinoEngine {
     }
     this.resetRunState(true);
 
-    // Offset guests slightly on the road shoulder so teammates never overlap on spawn!
+    // Offset teammates cleanly around the zone spawn so players never overlap
     const myId = client.getClientId();
     const myIdx = Math.max(0, room.players.findIndex((p) => p.id === myId));
-    if (myIdx > 0) {
-      const side = myIdx % 2 === 1 ? 1 : -1;
-      const row = Math.ceil(myIdx / 2);
-      this.playerX = this.layout.spawn.x + side * 2.1;
-      this.playerZ = this.layout.spawn.z + row * 1.4;
-    }
+    const myOff = computeCoopSlotSpawnOffset(myIdx);
+    this.playerX = this.layout.spawn.x + myOff.dx;
+    this.playerZ = this.layout.spawn.z + myOff.dz;
 
     // Apply any already-completed objectives/tapes if joining mid-run
     for (const tid of room.collectedTapes) {
@@ -3110,6 +3105,8 @@ export class NegruzinoEngine {
       this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[this.chapterIndex].introCutscene, false);
     }
     this.syncCoopPartnersFromRoom(room);
+    this.resetCoopPartnerPositionsToSpawn();
+    this.broadcastLocalCoopStateNow();
     this.emitHud();
   }
 
@@ -3200,10 +3197,58 @@ export class NegruzinoEngine {
     this.coopPartners.clear();
   }
 
+  private resetCoopPartnerPositionsToSpawn(): void {
+    const players = this.coopRoom?.players ?? [];
+    let fallbackIdx = 1;
+    for (const p of this.coopPartners.values()) {
+      const foundIdx = players.findIndex((pl) => pl.id === p.id);
+      const slotIdx = foundIdx >= 0 ? foundIdx : fallbackIdx++;
+      const off = computeCoopSlotSpawnOffset(slotIdx);
+      const sx = this.layout.spawn.x + off.dx;
+      const sz = this.layout.spawn.z + off.dz;
+      const syaw = this.layout.spawn.yaw;
+      p.x = sx;
+      p.y = 0;
+      p.z = sz;
+      p.targetX = sx;
+      p.targetY = 0;
+      p.targetZ = sz;
+      p.yaw = syaw;
+      p.targetYaw = syaw;
+      p.rig.group.position.set(sx, 0, sz);
+      p.rig.group.rotation.y = syaw;
+      p.rig.headlampBeam.visible = this.phase !== 'hub' && !p.isDowned;
+    }
+  }
+
+  private broadcastLocalCoopStateNow(): void {
+    if (!this.coopClient?.isInActiveSession()) return;
+    const reloadProgress = this.reloading
+      ? Math.max(0, Math.min(1, 1 - this.reloadTimer / Math.max(0.1, this.activeReloadDuration)))
+      : 0;
+    this.coopClient.sendPlayerState({
+      x: this.playerX,
+      y: this.playerY,
+      z: this.playerZ,
+      yaw: this.playerYaw,
+      pitch: this.playerPitch,
+      weaponId: this.activeWeapon,
+      hp: Math.round(this.hp),
+      maxHp: this.maxHp,
+      isFiring: this.muzzleFlashTimer > 0,
+      isReloading: this.reloading,
+      reloadProgress: Number(reloadProgress.toFixed(2)),
+      isMoving: false,
+      isDowned: this.coopLocalDowned,
+      kills: this.kills,
+    });
+  }
+
   private syncCoopPartnersFromRoom(room: CoopRoomSnapshot): void {
     const myId = this.coopClient?.getClientId();
     const activeIds = new Set<string>();
-    for (const summary of room.players) {
+    for (let idx = 0; idx < room.players.length; idx++) {
+      const summary = room.players[idx];
       if (summary.id === myId) continue;
       activeIds.add(summary.id);
       const existing = this.coopPartners.get(summary.id);
@@ -3217,22 +3262,28 @@ export class NegruzinoEngine {
         existing.weaponId = summary.weaponId;
         existing.rig.setWeapon(summary.weaponId);
       } else {
+        const off = computeCoopSlotSpawnOffset(idx);
+        const sx = this.layout.spawn.x + off.dx;
+        const sz = this.layout.spawn.z + off.dz;
+        const syaw = this.layout.spawn.yaw;
         const rig = createCoopPartnerModel(this.shadowTex, summary.name);
         rig.setWeapon(summary.weaponId);
-        rig.group.position.set(2.2, 0, 30.8);
+        rig.group.position.set(sx, 0, sz);
+        rig.group.rotation.y = syaw;
+        rig.headlampBeam.visible = this.phase !== 'hub' && !summary.isDowned;
         this.scene.add(rig.group);
         this.coopPartners.set(summary.id, {
           id: summary.id,
           name: summary.name,
           rig,
-          x: 2.2,
+          x: sx,
           y: 0,
-          z: 30.8,
-          targetX: 2.2,
+          z: sz,
+          targetX: sx,
           targetY: 0,
-          targetZ: 30.8,
-          yaw: 0,
-          targetYaw: 0,
+          targetZ: sz,
+          yaw: syaw,
+          targetYaw: syaw,
           pitch: 0,
           hp: summary.hp,
           maxHp: summary.maxHp,
@@ -3264,6 +3315,8 @@ export class NegruzinoEngine {
       const rig = createCoopPartnerModel(this.shadowTex, st.name);
       rig.setWeapon(st.weaponId);
       rig.group.position.set(st.x, st.y, st.z);
+      rig.group.rotation.y = st.yaw;
+      rig.headlampBeam.visible = this.phase !== 'hub' && !st.isDowned;
       this.scene.add(rig.group);
       partner = {
         id: st.id,
@@ -4648,6 +4701,9 @@ export class NegruzinoEngine {
       this.updateTitleCameraTour(dt);
     } else if (this.phase === 'cutscene') {
       this.updateCutsceneCamera(dt);
+      if (this.coopClient?.isInActiveSession()) {
+        this.updateCoopSync(dt, false);
+      }
     } else if (this.phase === 'playing' || this.phase === 'hub') {
       this.updatePlaying(dt);
     }
@@ -4659,8 +4715,6 @@ export class NegruzinoEngine {
     if (this.composer && !this.isSoftwareGl) {
       if (this.cinematicPass) {
         this.cinematicPass.uniforms.uTime.value = now * 0.001;
-        this.cinematicPass.uniforms.uChromatic.value =
-          0.0006 + this.damageFlash * 0.003 + this.exeCorruption * 0.0012;
       }
       this.composer.render();
     } else {
@@ -4687,7 +4741,7 @@ export class NegruzinoEngine {
         Math.sin(timeSec * 3.7 + lamp.seed) * 0.5 +
         Math.sin(timeSec * 19.3 + lamp.seed * 2.1) * 0.25;
       const dip = wave < -0.58 ? 0.35 : 1.0;
-      lamp.bulbMat.emissiveIntensity = 3.2 * dip;
+      lamp.bulbMat.emissiveIntensity = 1.65 * dip;
       if (lamp.pointLight) {
         lamp.pointLight.intensity = 34 * dip;
       }
@@ -4720,7 +4774,7 @@ export class NegruzinoEngine {
         entry.spot.position.set(lx, 6.95, l.z);
         entry.target.position.set(lx, 0, l.z);
         entry.target.updateMatrixWorld();
-        entry.spot.intensity = (l.bulbMat.emissiveIntensity / 3.2) * 44;
+        entry.spot.intensity = (l.bulbMat.emissiveIntensity / 1.65) * 44;
       } else {
         entry.spot.intensity = 0;
       }
@@ -5557,14 +5611,16 @@ export class NegruzinoEngine {
         p.rig.muzzleFlash.visible = false;
       }
 
+      p.rig.headlampBeam.visible = this.phase !== 'hub' && !p.isDowned;
+
       const sig = `${p.name}|${Math.round(p.hp)}|${p.maxHp}|${p.isDowned}`;
       if (sig !== p.lastLabelSig) {
         p.lastLabelSig = sig;
         p.rig.updateLabel(p.name, p.hp, p.maxHp, p.isDowned);
       }
       const distToCam = Math.hypot(p.x - this.playerX, p.z - this.playerZ);
-      p.rig.nameSprite.visible = distToCam > 1.8 && distToCam < 44;
-      const spriteScale = THREE.MathUtils.clamp(0.55 + distToCam * 0.045, 0.62, 1.35);
+      p.rig.nameSprite.visible = distToCam > 0.45 && distToCam < 68;
+      const spriteScale = THREE.MathUtils.clamp(0.56 + distToCam * 0.042, 0.64, 1.55);
       p.rig.nameSprite.scale.set(spriteScale, spriteScale * 0.27, 1);
     }
 
@@ -5697,6 +5753,19 @@ export class NegruzinoEngine {
         r.rightElbow.rotation.x = pose.rightElbowX;
         r.group.position.set(e.x, 0, e.z);
         r.group.rotation.y = e.prevYaw;
+
+        // Smooth distance-calibrated eye glow so distant monster eyes stay two crisp dots
+        const distToCamGuest = Math.hypot(
+          this.camera.position.x - e.x,
+          this.camera.position.z - e.z
+        );
+        for (let m = 0; m < r.emissiveParts.length; m++) {
+          r.emissiveParts[m].emissiveIntensity = computeDistanceEyeIntensity(
+            r.baseEmissiveIntensities[m] ?? 1.55,
+            distToCamGuest,
+            0
+          );
+        }
 
         // Local proximity hit feedback for guest if monster corners them
         e.attackCooldown = Math.max(0, e.attackCooldown - dt);
@@ -5851,15 +5920,9 @@ export class NegruzinoEngine {
           0,
           Math.min(1, 1 - e.telegraphTimer / Math.max(0.1, e.telegraphDuration))
         );
-        // Visible telegraph windup: emissive surge
-        for (const em of e.rig.emissiveParts) {
-          em.emissiveIntensity = 5.5;
-        }
 
         if (e.telegraphTimer <= 0) {
-          for (const em of e.rig.emissiveParts) {
-            em.emissiveIntensity = 2.6;
-          }
+          telegraphRatio = 0;
           const distNow = Math.hypot(this.playerX - e.x, this.playerZ - e.z);
           if (e.kind === 'screamer' && distNow < 9.5) {
             this.triggerScreamer('hollow');
@@ -6022,6 +6085,19 @@ export class NegruzinoEngine {
       r.leftElbow.rotation.x = pose.leftElbowX;
       r.rightShoulder.rotation.set(pose.rightShoulderX, 0, pose.rightShoulderZ);
       r.rightElbow.rotation.x = pose.rightElbowX;
+
+      // Smooth distance-calibrated eye/lantern glow so distant monster eyes stay two crisp dots
+      const distToCam = Math.hypot(
+        this.camera.position.x - e.x,
+        this.camera.position.z - e.z
+      );
+      for (let m = 0; m < r.emissiveParts.length; m++) {
+        r.emissiveParts[m].emissiveIntensity = computeDistanceEyeIntensity(
+          r.baseEmissiveIntensities[m] ?? 1.55,
+          distToCam,
+          telegraphRatio
+        );
+      }
 
       r.group.position.set(e.x, 0, e.z);
       r.group.rotation.y = smoothedYaw;

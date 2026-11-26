@@ -408,6 +408,7 @@ export interface EnemyRig {
   leftArm: THREE.Object3D;
   rightArm: THREE.Object3D;
   emissiveParts: THREE.MeshStandardMaterial[];
+  baseEmissiveIntensities: number[];
   shadowMesh: THREE.Mesh;
   hitMaterials: THREE.MeshStandardMaterial[];
   baseEmissiveColors: number[];
@@ -1156,7 +1157,7 @@ export function createStreetlamp(
     normalMap: materials.frostedGlass.normalMap,
     normalScale: new THREE.Vector2(0.7, 0.7),
     emissive: 0xea983d,
-    emissiveIntensity: 2.0,
+    emissiveIntensity: 1.55,
     roughness: 0.28,
     metalness: 0.06,
   });
@@ -1252,7 +1253,7 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
     emissive: 0xe62b2b,
-    emissiveIntensity: 3.4,
+    emissiveIntensity: 1.65,
     roughness: 0.22,
   });
 
@@ -1526,7 +1527,7 @@ export function createObjectiveShrine(
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
     emissive: labelColor,
-    emissiveIntensity: 3.0,
+    emissiveIntensity: 1.7,
     roughness: 0.18,
     metalness: 0.15,
   });
@@ -2298,14 +2299,14 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   const accentAmber = new THREE.MeshStandardMaterial({
     color: 0xffa63d,
     emissive: 0xff9224,
-    emissiveIntensity: 2.4,
+    emissiveIntensity: 1.35,
     roughness: 0.2,
   });
 
   const tritiumGreen = new THREE.MeshStandardMaterial({
     color: 0x52ff9a,
     emissive: 0x26e678,
-    emissiveIntensity: 2.8,
+    emissiveIntensity: 1.45,
     roughness: 0.18,
   });
 
@@ -3048,11 +3049,15 @@ export function createEnemyModel(
   const hitMaterials: THREE.MeshStandardMaterial[] = [];
   const baseEmissiveColors: number[] = [];
   const emissiveParts: THREE.MeshStandardMaterial[] = [];
+  const baseEmissiveIntensities: number[] = [];
 
   const trackMat = (m: THREE.MeshStandardMaterial, isGlowing = false) => {
     hitMaterials.push(m);
     baseEmissiveColors.push(m.emissive.getHex());
-    if (isGlowing) emissiveParts.push(m);
+    if (isGlowing) {
+      emissiveParts.push(m);
+      baseEmissiveIntensities.push(m.emissiveIntensity);
+    }
     return m;
   };
 
@@ -3353,10 +3358,10 @@ export function createEnemyModel(
     );
     const eyeMat = trackMat(
       new THREE.MeshStandardMaterial({
-        color: 0xff2828,
-        emissive: 0xff1111,
-        emissiveIntensity: 3.0,
-        roughness: 0.2,
+        color: 0xff3b3b,
+        emissive: 0xff1e1e,
+        emissiveIntensity: 1.55,
+        roughness: 0.22,
       }),
       true
     );
@@ -3608,8 +3613,8 @@ export function createEnemyModel(
       new THREE.MeshPhysicalMaterial({
         color: 0xffe4a0,
         emissive: 0xffaa44,
-        emissiveIntensity: 2.6,
-        roughness: 0.2,
+        emissiveIntensity: 1.5,
+        roughness: 0.22,
         metalness: 0.08,
         clearcoat: 0.35,
         clearcoatRoughness: 0.24,
@@ -3879,7 +3884,7 @@ export function createEnemyModel(
       new THREE.MeshStandardMaterial({
         color: 0xff5a5a,
         emissive: 0xd93030,
-        emissiveIntensity: 2.5,
+        emissiveIntensity: 1.35,
         roughness: 0.28,
       }),
       true
@@ -3895,10 +3900,10 @@ export function createEnemyModel(
     );
     const exePupilMat = trackMat(
       new THREE.MeshStandardMaterial({
-        color: 0xff2020,
-        emissive: 0xff1414,
-        emissiveIntensity: 3.2,
-        roughness: 0.2,
+        color: 0xff3434,
+        emissive: 0xff1c1c,
+        emissiveIntensity: 1.6,
+        roughness: 0.22,
       }),
       true
     );
@@ -4047,11 +4052,13 @@ export function createEnemyModel(
     const sEyeL = new THREE.Mesh(new THREE.SphereGeometry(0.064, 10, 10), exeSocketMat);
     sEyeL.scale.set(0.85, 1.35, 0.75);
     sEyeL.position.set(0.082, 0.1, 0.16);
-    const sPupilL = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), exePupilMat);
-    sPupilL.position.set(0, 0, 0.048);
-    sEyeL.add(sPupilL);
     const sEyeR = sEyeL.clone();
     sEyeR.position.x = -0.082;
+    // Mount glowing pupils directly on headMesh (uniform 1:1:1 sphere — never stretched by socket scale)
+    const sPupilL = new THREE.Mesh(new THREE.SphereGeometry(0.025, 10, 10), exePupilMat);
+    sPupilL.position.set(0.082, 0.1, 0.198);
+    const sPupilR = sPupilL.clone();
+    sPupilR.position.x = -0.082;
 
     const mouthOuter = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), exeSocketMat);
     mouthOuter.scale.set(0.72, 1.48, 0.55);
@@ -4059,7 +4066,7 @@ export function createEnemyModel(
     const mouthCore = new THREE.Mesh(new THREE.SphereGeometry(0.082, 10, 10), shriekCoreMat);
     mouthCore.scale.set(0.68, 1.35, 0.5);
     mouthCore.position.set(0, -0.09, 0.17);
-    headMesh.add(sEyeL, sEyeR, mouthOuter, mouthCore);
+    headMesh.add(sEyeL, sEyeR, sPupilL, sPupilR, mouthOuter, mouthCore);
     neckGroup.add(headMesh);
 
     leftArmRig = buildArticulatedArm({
@@ -4142,7 +4149,7 @@ export function createEnemyModel(
         normalMap: wMaps.metal.normalMap,
         normalScale: new THREE.Vector2(0.5, 0.5),
         emissive: 0xff9d36,
-        emissiveIntensity: 2.8,
+        emissiveIntensity: 1.6,
         roughness: 0.22,
         clearcoat: 0.35,
         clearcoatRoughness: 0.24,
@@ -4166,10 +4173,10 @@ export function createEnemyModel(
     );
     const bossRedEyeMat = trackMat(
       new THREE.MeshStandardMaterial({
-        color: 0xff1e1e,
-        emissive: 0xff1111,
-        emissiveIntensity: 3.4,
-        roughness: 0.18,
+        color: 0xff3434,
+        emissive: 0xff1a1a,
+        emissiveIntensity: 1.65,
+        roughness: 0.2,
       }),
       true
     );
@@ -4465,6 +4472,7 @@ export function createEnemyModel(
     leftArm: leftArmRig.shoulder,
     rightArm: rightArmRig.shoulder,
     emissiveParts,
+    baseEmissiveIntensities,
     shadowMesh,
     hitMaterials,
     baseEmissiveColors,
@@ -4662,24 +4670,24 @@ export function createSovietCar(materials: WorldMaterialSet): THREE.Group {
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
     emissive: 0xffc066,
-    emissiveIntensity: 4.2,
-    roughness: 0.12,
+    emissiveIntensity: 1.85,
+    roughness: 0.16,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.06,
+    clearcoatRoughness: 0.08,
   });
   const amberSignalMat = new THREE.MeshPhysicalMaterial({
     color: 0xff8c24,
     emissive: 0xd96410,
-    emissiveIntensity: 1.4,
-    roughness: 0.18,
+    emissiveIntensity: 1.15,
+    roughness: 0.2,
     clearcoat: 0.9,
   });
   const taillightMat = new THREE.MeshPhysicalMaterial({
     color: 0xff3b3b,
     map: materials.frostedGlass.map,
     emissive: 0xd92222,
-    emissiveIntensity: 2.8,
-    roughness: 0.18,
+    emissiveIntensity: 1.45,
+    roughness: 0.2,
     clearcoat: 0.95,
   });
   for (const side of [-0.62, 0.62]) {
@@ -5271,6 +5279,7 @@ export interface CoopPartnerRig {
   weaponPivot: THREE.Group;
   weaponMag: THREE.Mesh;
   muzzleFlash: THREE.Mesh;
+  headlampBeam: THREE.Mesh;
   nameSprite: THREE.Sprite;
   setWeapon: (weaponId: WeaponId) => void;
   updateLabel: (name: string, hp: number, maxHp: number, isDowned: boolean) => void;
@@ -5325,10 +5334,10 @@ export function createCoopPartnerModel(
     metalness: 0.82,
   });
   const lampGlowMat = new THREE.MeshStandardMaterial({
-    color: 0xffd28a,
-    emissive: 0xffa63d,
-    emissiveIntensity: 2.8,
-    roughness: 0.2,
+    color: 0xffe4b0,
+    emissive: 0xffb357,
+    emissiveIntensity: 1.75,
+    roughness: 0.22,
   });
 
   // Sculpted torso parka + storm collar + backpack
@@ -5394,10 +5403,54 @@ export function createCoopPartnerModel(
     headPivot.add(earFlap);
   }
 
-  const headlamp = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.036, 0.04, 10), lampGlowMat);
+  const headlamp = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.04, 0.045, 12), lampGlowMat);
   headlamp.rotation.x = Math.PI / 2;
-  headlamp.position.set(0, 0.21, -0.155);
+  headlamp.position.set(0, 0.21, -0.158);
   headPivot.add(headlamp);
+
+  // Soft Fresnel-faded forward volumetric headlamp beam (-Z) so teammates read clearly in dark horror zones
+  const headlampConeGeo = new THREE.CylinderGeometry(0.045, 1.05, 5.4, 18, 1, true);
+  headlampConeGeo.translate(0, -2.7, 0);
+  headlampConeGeo.rotateX(Math.PI / 2);
+  const headlampBeamMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(0xffe1a8) },
+      uOpacity: { value: 0.18 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      void main() {
+        vUv = uv;
+        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+        vNormalView = normalize(normalMatrix * normal);
+        vViewDir = normalize(-mvPos.xyz);
+        gl_Position = projectionMatrix * mvPos;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      varying vec3 vNormalView;
+      varying vec3 vViewDir;
+      void main() {
+        float fresnel = pow(abs(dot(normalize(vNormalView), normalize(vViewDir))), 2.0);
+        float nearFade = smoothstep(1.0, 0.9, vUv.y);
+        float farFade = pow(clamp(vUv.y, 0.0, 1.0), 1.9);
+        float alpha = fresnel * nearFade * farFade * uOpacity;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  });
+  const headlampBeam = new THREE.Mesh(headlampConeGeo, headlampBeamMat);
+  headlampBeam.position.set(0, 0.21, -0.18);
+  headPivot.add(headlampBeam);
 
   // Articulated Legs
   const makeLeg = (side: -1 | 1) => {
@@ -5533,10 +5586,11 @@ export function createCoopPartnerModel(
     new THREE.SpriteMaterial({
       map: labelTex,
       transparent: true,
-      depthTest: true,
+      depthTest: false,
       depthWrite: false,
     })
   );
+  nameSprite.renderOrder = 20;
   nameSprite.scale.set(0.76, 0.21, 1);
   nameSprite.position.y = 2.08;
   group.add(nameSprite);
@@ -5580,6 +5634,7 @@ export function createCoopPartnerModel(
     weaponPivot,
     weaponMag,
     muzzleFlash,
+    headlampBeam,
     nameSprite,
     setWeapon,
     updateLabel,

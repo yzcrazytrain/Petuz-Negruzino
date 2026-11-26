@@ -1563,7 +1563,7 @@ export function createPickupMaterials(maxAnisotropy = 4): {
       normalMap: cPbr.normalMap,
       roughnessMap: cPbr.roughnessMap,
       emissive: 0xd91624,
-      emissiveIntensity: 2.6,
+      emissiveIntensity: 1.65,
       roughness: 0.9,
       metalness: 0.48,
     }),

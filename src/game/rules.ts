@@ -1451,4 +1451,38 @@ export function evaluateCutsceneSkipVote(
   };
 }
 
+/**
+ * Calibrates monster eye & lantern emissive intensity by distance to camera:
+ * - Close range (<= 14m): full expressive intensity (with soft capped telegraph surge <= 2.25)
+ * - Medium-to-long range (15m..60m+): smoothly attenuates down to ~42% of base intensity
+ *   so eyes remain two crisp, distinct glowing dots instead of 1px HDR bloom spikes/streaks.
+ */
+export function computeDistanceEyeIntensity(
+  baseIntensity: number,
+  distanceMeters: number,
+  telegraphRatio = 0
+): number {
+  const safeBase = Math.max(0.2, Math.min(2.0, Number.isFinite(baseIntensity) ? baseIntensity : 1.5));
+  const dist = Math.max(0, Number.isFinite(distanceMeters) ? distanceMeters : 0);
+  const t = Math.max(0, Math.min(1, (dist - 14) / 46));
+  // Smoothstep falloff: 1.0 at <=14m -> 0.42 at >=60m
+  const smoothT = t * t * (3 - 2 * t);
+  const distanceFactor = 1 - smoothT * 0.58;
+  const surge = Math.max(0, Math.min(1, telegraphRatio)) * 0.55 * (1 - smoothT * 0.65);
+  return Math.min(2.25, Number(((safeBase + surge) * distanceFactor).toFixed(3)));
+}
 
+/**
+ * Deterministic collision-free co-op squad spawn offsets relative to the active zone's layout.spawn.
+ * Ensures 1..4 players appear side-by-side in clear view inside Hub, Suburb, Depot, and Substation.
+ */
+export function computeCoopSlotSpawnOffset(slotIndex: number): { dx: number; dz: number } {
+  const idx = Math.max(0, Math.floor(Number.isFinite(slotIndex) ? slotIndex : 0));
+  if (idx === 0) return { dx: 0, dz: 0 };
+  const side = idx % 2 === 1 ? 1 : -1;
+  const row = Math.ceil(idx / 2);
+  return {
+    dx: Number((side * 1.95).toFixed(2)),
+    dz: Number((row * 1.55).toFixed(2)),
+  };
+}

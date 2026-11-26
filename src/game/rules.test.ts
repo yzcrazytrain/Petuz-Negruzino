@@ -8,7 +8,9 @@ import {
   computeCharacterProgression,
   computeComboMultiplier,
   computeCoopScaling,
+  computeCoopSlotSpawnOffset,
   computeDifficultyScaledEnemyStats,
+  computeDistanceEyeIntensity,
   computeEnemySteering,
   computeLoopScaling,
   computeRoosterGaitPose,
@@ -984,3 +986,53 @@ test('Stage 2 coopProtocol parses Hub and Cutscene Skip vote messages and cleans
   assert.deepEqual(snap.boardedPlayers, ['p1']);
   assert.deepEqual(snap.cutsceneSkipVotes, []);
 });
+
+test('distance eye dimming preserves crisp dots at close range, dims smoothly at 15-60m+, and caps telegraph surge', () => {
+  const base = 1.6;
+  const close = computeDistanceEyeIntensity(base, 8, 0);
+  const mid = computeDistanceEyeIntensity(base, 30, 0);
+  const far = computeDistanceEyeIntensity(base, 60, 0);
+  const veryFar = computeDistanceEyeIntensity(base, 120, 0);
+
+  assert.equal(close, base);
+  assert.ok(mid < close && mid > far, `expected smooth dimming: close=${close}, mid=${mid}, far=${far}`);
+  assert.ok(far > 0.5 && far < base * 0.5, `expected far eye glow softly dimmed, got ${far}`);
+  assert.equal(veryFar, far);
+
+  // Telegraph boost stays tightly capped (<= 2.25) so monster eyes never flare into bloom streaks
+  const closeTelegraph = computeDistanceEyeIntensity(base, 6, 1.0);
+  assert.ok(closeTelegraph > close && closeTelegraph <= 2.25);
+
+  const farTelegraph = computeDistanceEyeIntensity(base, 55, 1.0);
+  assert.ok(farTelegraph < closeTelegraph && farTelegraph <= 2.25);
+});
+
+test('co-op 4-player slot spawn offsets are distinct and collision-free in Hub, Suburb, Depot, and Substation', async () => {
+  const { buildZoneLayout } = await import('./zones');
+
+  const offsets = [0, 1, 2, 3].map((slot) => computeCoopSlotSpawnOffset(slot));
+  assert.deepEqual(offsets[0], { dx: 0, dz: 0 });
+  // All 4 slots must have pairwise separation >= 1.4m so avatars never clip into each other
+  for (let i = 0; i < offsets.length; i++) {
+    for (let j = i + 1; j < offsets.length; j++) {
+      const dist = Math.hypot(offsets[i].dx - offsets[j].dx, offsets[i].dz - offsets[j].dz);
+      assert.ok(dist >= 1.4, `slots ${i} and ${j} too close (${dist.toFixed(2)}m)`);
+    }
+  }
+
+  for (const zoneId of ['hub', 'suburb', 'depot', 'substation'] as const) {
+    const layout = buildZoneLayout(zoneId);
+    for (let slot = 0; slot < 4; slot++) {
+      const off = offsets[slot];
+      const px = layout.spawn.x + off.dx;
+      const pz = layout.spawn.z + off.dz;
+      const resolved = resolveCircleVsAABBs(px, pz, 0.5, layout.colliders, layout.bounds);
+      assert.equal(
+        resolved.hitWall,
+        false,
+        `zone ${zoneId} slot ${slot} (${px}, ${pz}) clipped collider or out of bounds`
+      );
+    }
+  }
+});
+
