@@ -30,6 +30,7 @@ import type {
   CustomTextureSpec,
   DifficultyId,
   GameMode,
+  GraphicsQuality,
   HudSnapshot,
   Language,
   MusicSettings,
@@ -243,6 +244,10 @@ export default function App() {
     engineRef.current?.setMouseSensitivity(sensitivity);
   };
 
+  const handleChangeGraphicsQuality = (quality: GraphicsQuality) => {
+    engineRef.current?.setGraphicsQuality(quality);
+  };
+
   const handleRebindAction = useCallback((action: BindableAction, code: string) => {
     engineRef.current?.setKeybind(action, code);
   }, []);
@@ -390,7 +395,11 @@ export default function App() {
 
       {/* Cinematic outer-edge camera-lens light drizzle droplets (hidden in bright Hub & AWP scope) */}
       {hud?.phase !== 'hub' && !(hud?.phase === 'playing' && hud.isScoped) && (
-        <CameraRainOverlay intensity={hud?.phase === 'title' ? 0.78 : 1.0} />
+        <CameraRainOverlay
+          intensity={hud?.phase === 'title' ? 0.78 : 1.0}
+          paused={hud?.phase === 'paused' || workshopOpen || hubSpecsOpen || hudEditorOpen}
+          eco={hud?.graphicsQuality === 'eco'}
+        />
       )}
 
       {hud && hud.phase === 'title' && (
@@ -572,6 +581,7 @@ export default function App() {
           roosterName={hud.roosterName}
           difficulty={hud.difficulty}
           mouseSensitivity={hud.mouseSensitivity}
+          graphicsQuality={hud.graphicsQuality}
           keybinds={hud.keybinds}
           initialTab={workshopTab}
           screamerIntensity={hud.screamerIntensity}
@@ -587,6 +597,7 @@ export default function App() {
           onChangeRoosterName={handleChangeRoosterName}
           onChangeDifficulty={handleChangeDifficulty}
           onChangeSensitivity={handleChangeSensitivity}
+          onChangeGraphicsQuality={handleChangeGraphicsQuality}
           onRebindAction={handleRebindAction}
           onResetKeybinds={handleResetKeybinds}
           onKeybindCaptureChange={handleKeybindCaptureChange}

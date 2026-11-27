@@ -18,42 +18,30 @@ export function ScreamerOverlay({
   if (!active || progress <= 0) return null;
 
   const isReduced = intensity === 'reduced';
-  // progress counts down 1 -> 0; elapsed goes 0 -> 1 for a violent lunge into the lens
+  // progress counts down 1 -> 0; elapsed goes 0 -> 1 for a sharp lunge into the lens
   const elapsed = Math.max(0, Math.min(1, 1 - progress));
 
-  // Sharp, unsettling 2-beat pitch-black strobe splice in full mode so the face
-  // snaps out of total darkness rather than fading in predictably.
-  const isBlackoutBeat =
-    !isReduced &&
-    ((elapsed > 0.055 && elapsed < 0.095) ||
-      (elapsed > 0.23 && elapsed < 0.265) ||
-      (elapsed > 0.52 && elapsed < 0.55));
-
-  // Snap-zoom lunge with sudden micro-jerks toward camera
-  const lungeCurve = Math.pow(elapsed, 0.36);
-  const jerkPulse = isReduced ? 0 : Math.sin(elapsed * 58) * 0.055 * progress;
+  // Snap-zoom lunge with micro-jerks toward camera (never blacks out the viewport)
+  const lungeCurve = Math.pow(elapsed, 0.38);
+  const jerkPulse = isReduced ? 0 : Math.sin(elapsed * 52) * 0.045 * progress;
   const lungeScale = isReduced
-    ? 0.92 + elapsed * 0.16
-    : 0.62 + lungeCurve * 0.88 + jerkPulse;
+    ? 0.92 + elapsed * 0.14
+    : 0.68 + lungeCurve * 0.62 + jerkPulse;
 
   // Uncanny head snap tilt + twitch jitter
   const headTiltDeg = isReduced
     ? 0
-    : Math.sin(elapsed * 29) * 6.5 + (elapsed > 0.26 && elapsed < 0.52 ? -9.5 : 4.2);
-  const jitterX = isReduced ? 0 : Math.round(Math.sin(elapsed * 83) * 14 * progress);
-  const jitterY = isReduced ? 0 : Math.round(Math.cos(elapsed * 71) * 10 * progress);
+    : Math.sin(elapsed * 26) * 5.5 + (elapsed > 0.28 && elapsed < 0.56 ? -7.0 : 3.2);
+  const jitterX = isReduced ? 0 : Math.round(Math.sin(elapsed * 74) * 10 * progress);
+  const jitterY = isReduced ? 0 : Math.round(Math.cos(elapsed * 64) * 8 * progress);
 
   const masterOpacity = isReduced
-    ? Math.min(0.66, progress * 0.96)
-    : Math.min(0.99, Math.pow(progress, 0.32) * 1.18);
+    ? Math.min(0.52, progress * 0.85)
+    : Math.min(0.76, Math.pow(progress, 0.42) * 0.96);
 
-  // Dramatic under-lit cold-white & blood-crimson strobe bursts
+  // Subtle crimson flash pulse (never washes out or blacks out the entire screen)
   const initialFlash =
-    !isReduced && elapsed < 0.06
-      ? 0.72 * (1 - elapsed / 0.06)
-      : !isReduced && elapsed > 0.265 && elapsed < 0.31
-        ? 0.44 * (1 - (elapsed - 0.265) / 0.045)
-        : 0;
+    !isReduced && elapsed < 0.07 ? 0.24 * (1 - elapsed / 0.07) : 0;
 
   const accentColor =
     kind === 'watchman'
@@ -66,80 +54,66 @@ export function ScreamerOverlay({
 
   const underLightRgba =
     kind === 'watchman'
-      ? 'rgba(255, 128, 34, 0.44)'
+      ? 'rgba(255, 128, 34, 0.26)'
       : kind === 'hollow'
-        ? 'rgba(225, 214, 214, 0.36)'
-        : 'rgba(196, 22, 26, 0.52)';
+        ? 'rgba(225, 214, 214, 0.22)'
+        : 'rgba(196, 22, 26, 0.30)';
 
-  const rgbOffset = isReduced ? 2 : Math.round(7 + Math.sin(elapsed * 54) * 6);
+  const rgbOffset = isReduced ? 1 : Math.round(4 + Math.sin(elapsed * 48) * 3);
 
   return (
     <div
       data-testid="screamer-overlay"
       aria-live="assertive"
-      className={`fixed inset-0 z-40 pointer-events-none flex items-center justify-center overflow-hidden bg-[#020103] ${
-        isReduced ? '' : 'animate-screamer-shutter'
-      }`}
+      className="fixed inset-0 z-[5] pointer-events-none flex items-center justify-center overflow-hidden"
       style={{ opacity: masterOpacity }}
     >
-      {/* Dramatic horror under-lighting & crushed perimeter vignette */}
+      {/* Translucent horror perimeter vignette — keeps 3D scene visible underneath */}
       <div
         className="absolute inset-0"
         style={{
-          background: isBlackoutBeat
-            ? '#020102'
-            : `radial-gradient(ellipse 68% 62% at 50% 56%, ${underLightRgba} 0%, rgba(18, 3, 5, 0.94) 52%, rgba(2, 1, 2, 1) 88%)`,
+          background: `radial-gradient(ellipse 64% 58% at 50% 54%, ${underLightRgba} 0%, rgba(16, 3, 5, 0.42) 55%, rgba(6, 2, 4, 0.74) 100%)`,
         }}
       />
 
-      {/* Heavy VHS tracking distortion lines */}
+      {/* Subtle VHS tracking scanlines */}
       <div
-        className="absolute inset-0 opacity-75"
+        className="absolute inset-0 opacity-45"
         style={{
           backgroundImage:
-            'repeating-linear-gradient(0deg, rgba(255,255,255,0.045) 0px, rgba(255,255,255,0.045) 2px, transparent 2px, transparent 5px)',
-          transform: `translateY(${Math.round(Math.sin(elapsed * 43) * 14)}px)`,
+            'repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 2px, transparent 2px, transparent 5px)',
+          transform: `translateY(${Math.round(Math.sin(elapsed * 38) * 10)}px)`,
         }}
       />
 
-      {/* Violent chromatic tear slices */}
-      {!isReduced && !isBlackoutBeat && (
+      {/* Chromatic tear slices */}
+      {!isReduced && (
         <>
           <div
-            className="absolute left-0 right-0 h-12 bg-[#ff1e1e]/24 mix-blend-screen"
+            className="absolute left-0 right-0 h-10 bg-[#ff1e1e]/18 mix-blend-screen"
             style={{
               top: `${18 + Math.round(elapsed * 42)}%`,
-              transform: `translateX(${rgbOffset * 2.5}px)`,
+              transform: `translateX(${rgbOffset * 2}px)`,
             }}
           />
           <div
-            className="absolute left-0 right-0 h-7 bg-[#6ee7ff]/18 mix-blend-screen"
+            className="absolute left-0 right-0 h-6 bg-[#6ee7ff]/14 mix-blend-screen"
             style={{
               top: `${68 - Math.round(elapsed * 30)}%`,
-              transform: `translateX(${-rgbOffset * 3}px)`,
-            }}
-          />
-          <div
-            className="absolute left-0 right-0 h-3 bg-[#fff0e0]/22 mix-blend-screen"
-            style={{
-              top: `${44 + Math.round(Math.sin(elapsed * 37) * 18)}%`,
-              transform: `translateX(${rgbOffset * 4}px)`,
+              transform: `translateX(${-rgbOffset * 2.5}px)`,
             }}
           />
         </>
       )}
 
       {/* High-contrast anatomical nightmare lunge */}
-      {!isBlackoutBeat && (
-        <div
-          className={`relative w-[min(680px,96vw)] h-[min(680px,88vh)] flex items-center justify-center ${
-            isReduced ? '' : 'animate-screamer'
-          }`}
-          style={{
-            transform: `translate(${jitterX}px, ${jitterY}px) scale(${lungeScale.toFixed(3)}) rotate(${headTiltDeg.toFixed(1)}deg)`,
-            filter: `contrast(${isReduced ? 1.08 : 1.28}) drop-shadow(${rgbOffset}px 0 18px rgba(215, 28, 28, 0.65)) drop-shadow(${-rgbOffset}px 0 14px rgba(120, 220, 255, 0.32))`,
-          }}
-        >
+      <div
+        className="relative w-[min(560px,88vw)] h-[min(560px,78vh)] flex items-center justify-center"
+        style={{
+          transform: `translate(${jitterX}px, ${jitterY}px) scale(${lungeScale.toFixed(3)}) rotate(${headTiltDeg.toFixed(1)}deg)`,
+          filter: `contrast(${isReduced ? 1.06 : 1.2}) drop-shadow(${rgbOffset}px 0 14px rgba(215, 28, 28, 0.55)) drop-shadow(${-rgbOffset}px 0 10px rgba(120, 220, 255, 0.24))`,
+        }}
+      >
           <svg
             viewBox="0 0 400 400"
             className="w-full h-full"
@@ -370,9 +344,8 @@ export function ScreamerOverlay({
             )}
           </svg>
         </div>
-      )}
 
-      {/* Sudden cold-white / crimson camera flash burst */}
+      {/* Subtle flash pulse */}
       {initialFlash > 0.01 && (
         <div
           className="absolute inset-0 bg-[#fff2e8]"
@@ -381,13 +354,11 @@ export function ScreamerOverlay({
       )}
 
       {/* Atmospheric horror caption */}
-      {!isBlackoutBeat && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-[min(680px,92vw)] text-center px-4">
-          <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.2em] text-[#ece7dc] uppercase hud-text-shadow">
-            {caption}
-          </div>
+      <div className="absolute bottom-14 left-1/2 -translate-x-1/2 w-[min(680px,92vw)] text-center px-4">
+        <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold tracking-[0.2em] text-[#ece7dc] uppercase hud-text-shadow">
+          {caption}
         </div>
-      )}
+      </div>
     </div>
   );
 }

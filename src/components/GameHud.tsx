@@ -77,6 +77,15 @@ export function GameHud({
         />
       )}
 
+      {/* Psychological Horror Screamer Overlay (rendered beneath HUD cards so UI never blacks out) */}
+      <ScreamerOverlay
+        active={hud.screamerActive}
+        progress={hud.screamerProgress}
+        kind={hud.screamerKind}
+        caption={hud.screamerCaption}
+        intensity={hud.screamerIntensity}
+      />
+
       {/* Peripheral damage & low-HP crimson vignette */}
       {(hud.damageFlash > 0.02 || lowHp) && (
         <div
@@ -168,94 +177,257 @@ export function GameHud({
         </div>
       )}
 
-      {/* Pre-Match Hub: Firing Range Hit Readout */}
-      {hud.phase === 'hub' && hud.hub.lastRangeHit && (
-        <div
-          data-testid="hub-range-hit"
-          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#141e2b]/94 border border-[#e8963a]/75 text-[#f7cf86] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
-            hud.isPortrait ? 'top-[174px]' : 'top-16'
-          }`}
-        >
-          {t.hub.rangeHitReadout(
-            hud.hub.lastRangeHit.dummyLabel,
-            hud.hub.lastRangeHit.damage,
-            hud.hub.lastRangeHit.distanceMeters,
-            hud.hub.lastRangeHit.crit,
-            hud.hub.lastRangeHit.destroyed
-          )}
-        </div>
-      )}
-
-      {/* Pre-Match Hub: Moskvitch Launch & Specs Terminal Quick Bar */}
-      {hud.phase === 'hub' && (
-        <div
-          data-testid="hub-action-bar"
-          className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-wrap items-center justify-center rounded bg-[#0f1722]/92 border border-[#e8963a]/50 shadow-xl max-w-[94vw] ${
-            hud.isPortrait ? 'top-[116px] gap-1.5 px-2.5 py-1.5' : 'top-3 gap-2 px-3 py-2'
-          }`}
-        >
-          <span
-            data-testid="hub-moskvitch-counter"
-            className="font-mono-num text-[11px] sm:text-xs font-bold uppercase tracking-wider text-[#f3cf88] whitespace-nowrap"
-          >
-            {t.hub.moskvitchCounter(hud.hub.boardedCount, hud.hub.totalPlayers)}
-          </span>
-          <button
-            type="button"
-            data-testid="hub-board-car-btn"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onBoardMoskvitch?.();
-            }}
-            className={`px-2.5 sm:px-3 py-1 rounded font-display text-xs sm:text-sm font-bold uppercase tracking-wider inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-              hud.hub.inCar
-                ? 'bg-[#2a1518] border border-[#c93b3b]/70 text-[#ffd2d2] hover:bg-[#c93b3b]'
-                : 'bg-[#e8963a] text-[#0b0f17] hover:bg-[#f2a853]'
+      {/* UNIFIED CENTER BANNER STACK — eliminates all portrait/landscape HUD overlaps */}
+      <div
+        data-testid="hud-center-stack"
+        className={`fixed left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center gap-1.5 ${
+          hud.isPortrait
+            ? 'top-[148px] w-[min(362px,94vw)]'
+            : isTouch
+              ? 'top-2 w-[min(420px,54vw)]'
+              : 'top-3 w-[min(460px,54vw)]'
+        }`}
+      >
+        {/* Pre-Match Hub: Moskvitch Launch & Specs Terminal Quick Bar */}
+        {hud.phase === 'hub' && (
+          <div
+            data-testid="hub-action-bar"
+            className={`pointer-events-auto flex items-center justify-center rounded bg-[#0f1722]/92 border border-[#e8963a]/50 shadow-xl max-w-full ${
+              hud.isPortrait
+                ? 'flex-wrap gap-1.5 px-2.5 py-1.5'
+                : isTouch
+                  ? 'flex-nowrap gap-1.5 px-2 py-1'
+                  : 'flex-nowrap gap-2 px-3 py-2'
             }`}
           >
-            <Car className="w-3.5 h-3.5 shrink-0" />
-            <span>{hud.hub.inCar ? t.hub.moskvitchLeaveBtn : t.hub.moskvitchBoardBtn}</span>
-          </button>
-          <button
-            type="button"
-            data-testid="hub-specs-btn"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onOpenHubSpecs?.();
-            }}
-            className="px-2.5 sm:px-3 py-1 rounded bg-[#182436] border border-[#5fa88e]/60 text-[#9cecd0] font-display text-xs sm:text-sm font-bold uppercase tracking-wider inline-flex items-center gap-1.5 hover:bg-[#5fa88e] hover:text-[#0b0f17] transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <BookOpen className="w-3.5 h-3.5 shrink-0" />
-            <span>{t.hub.terminalBtn}</span>
-          </button>
-        </div>
-      )}
+            <span
+              data-testid="hub-moskvitch-counter"
+              className={`font-mono-num font-bold uppercase tracking-wider text-[#f3cf88] whitespace-nowrap ${
+                isTouch && !hud.isPortrait ? 'text-[10px]' : 'text-[11px] sm:text-xs'
+              }`}
+            >
+              {isTouch && !hud.isPortrait
+                ? `${hud.hub.boardedCount}/${hud.hub.totalPlayers}`
+                : t.hub.moskvitchCounter(hud.hub.boardedCount, hud.hub.totalPlayers)}
+            </span>
+            <button
+              type="button"
+              data-testid="hub-board-car-btn"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onBoardMoskvitch?.();
+              }}
+              className={`rounded font-display font-bold uppercase tracking-wider inline-flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+                isTouch && !hud.isPortrait
+                  ? 'px-2 py-1 text-[11px]'
+                  : 'px-2.5 sm:px-3 py-1 text-xs sm:text-sm'
+              } ${
+                hud.hub.inCar
+                  ? 'bg-[#2a1518] border border-[#c93b3b]/70 text-[#ffd2d2] hover:bg-[#c93b3b]'
+                  : 'bg-[#e8963a] text-[#0b0f17] hover:bg-[#f2a853]'
+              }`}
+            >
+              <Car className="w-3.5 h-3.5 shrink-0" />
+              <span>{hud.hub.inCar ? t.hub.moskvitchLeaveBtn : t.hub.moskvitchBoardBtn}</span>
+            </button>
+            <button
+              type="button"
+              data-testid="hub-specs-btn"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenHubSpecs?.();
+              }}
+              className={`rounded bg-[#182436] border border-[#5fa88e]/60 text-[#9cecd0] font-display font-bold uppercase tracking-wider inline-flex items-center gap-1 hover:bg-[#5fa88e] hover:text-[#0b0f17] transition-colors cursor-pointer whitespace-nowrap ${
+                isTouch && !hud.isPortrait
+                  ? 'px-2 py-1 text-[11px]'
+                  : 'px-2.5 sm:px-3 py-1 text-xs sm:text-sm'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 shrink-0" />
+              <span>{t.hub.terminalBtn}</span>
+            </button>
+          </div>
+        )}
 
-      {/* Live Cassette/Radio Story Subtitle Log (non-blocking) */}
-      {hud.storyLog && !hud.screamerActive && (
+        {/* Pre-Match Hub: Firing Range Hit Readout */}
+        {hud.phase === 'hub' && hud.hub.lastRangeHit && (
+          <div
+            data-testid="hub-range-hit"
+            className="px-3.5 py-1.5 rounded bg-[#141e2b]/94 border border-[#e8963a]/75 text-[#f7cf86] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-full truncate shadow-lg"
+          >
+            {t.hub.rangeHitReadout(
+              hud.hub.lastRangeHit.dummyLabel,
+              hud.hub.lastRangeHit.damage,
+              hud.hub.lastRangeHit.distanceMeters,
+              hud.hub.lastRangeHit.crit,
+              hud.hub.lastRangeHit.destroyed
+            )}
+          </div>
+        )}
+
+        {/* Active Objective Hold-Zone / Destructible Target Progress Bar */}
+        {hud.phase === 'playing' && hud.activeObjectiveProgress && (
+          <div
+            data-testid="active-objective-progress"
+            className={`w-full max-w-[340px] px-3 py-1.5 rounded bg-[#0d1420]/94 shadow-lg border ${
+              hud.activeObjectiveProgress.kind === 'hold'
+                ? 'border-[#3fd4c6]/70'
+                : 'border-[#e8793a]/75'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono-num uppercase tracking-wider mb-1">
+              <span
+                className={`font-bold truncate ${
+                  hud.activeObjectiveProgress.kind === 'hold'
+                    ? 'text-[#7ef2e6]'
+                    : 'text-[#ffbe7a]'
+                }`}
+              >
+                {hud.activeObjectiveProgress.kind === 'hold'
+                  ? hud.language === 'ru'
+                    ? `УДЕРЖАНИЕ: ${hud.activeObjectiveProgress.label}`
+                    : `HOLD ZONE: ${hud.activeObjectiveProgress.label}`
+                  : hud.language === 'ru'
+                    ? `ЦЕЛЬ: ${hud.activeObjectiveProgress.label}`
+                    : `TARGET: ${hud.activeObjectiveProgress.label}`}
+              </span>
+              <span className="text-[#ece7dc] font-bold shrink-0">
+                {hud.activeObjectiveProgress.kind === 'hold'
+                  ? `${Math.round(hud.activeObjectiveProgress.ratio * 100)}%`
+                  : `${hud.activeObjectiveProgress.currentValue}/${hud.activeObjectiveProgress.maxValue}`}
+              </span>
+            </div>
+            <div className="h-2 w-full bg-[#1a2230] rounded-xs overflow-hidden">
+              <div
+                className={`h-full transition-transform duration-100 origin-left ${
+                  hud.activeObjectiveProgress.kind === 'hold'
+                    ? 'bg-[#3fd4c6]'
+                    : 'bg-[#e8693a]'
+                }`}
+                style={{
+                  transform: `scaleX(${Math.max(0, Math.min(1, hud.activeObjectiveProgress.ratio))})`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Rooster Danger Alert Banner */}
+        {hud.rooster.alertActive && (
+          <div
+            data-testid="rooster-alert-banner"
+            className="px-3 py-1.5 rounded bg-[#1a0d10]/94 border border-[#c93b3b]/75 flex items-center gap-2 shadow-lg max-w-full"
+          >
+            <RoosterCrestIcon className="w-4 h-4 shrink-0" />
+            <span
+              aria-hidden="true"
+              className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#c93b3b]/25 border border-[#c93b3b]/70 text-[#f3c6c6] font-mono-num text-[11px] font-bold leading-none shrink-0"
+              style={{
+                transform: `rotate(${Math.round(
+                  (hud.rooster.alertAngleRad * 180) / Math.PI
+                )}deg)`,
+              }}
+            >
+              ↑
+            </span>
+            <span className="font-mono-num text-[11px] font-semibold tracking-wider text-[#f3c6c6] uppercase truncate">
+              {hud.rooster.alertLabel}
+            </span>
+          </div>
+        )}
+
+        {/* Character Rank-Up Banner */}
+        {hud.levelUpToast && !hud.rooster.alertActive && (
+          <div
+            data-testid="level-up-toast"
+            className="px-3.5 py-1.5 rounded bg-[#14231e]/94 border border-[#5fa88e]/75 text-[#b5f2dc] font-mono-num text-[11px] font-bold tracking-widest uppercase whitespace-nowrap max-w-full truncate shadow-lg"
+          >
+            {hud.levelUpToast}
+          </div>
+        )}
+
+        {/* Quick Cassette Track Toast */}
+        {hud.trackToast && (
+          <div
+            data-testid="track-toast"
+            className="px-3 py-1 rounded bg-[#0d121b]/94 border border-[#e8963a]/65 text-[#f0aa54] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-full truncate shadow-lg"
+          >
+            ♪ {hud.trackToast}
+          </div>
+        )}
+
+        {/* LAN Co-op Downed Alert & Squad Ping Callout */}
+        {hud.coop.active && hud.coop.localDowned && (
+          <div
+            data-testid="coop-downed-banner"
+            className="px-4 py-1.5 rounded bg-[#2a0c10]/94 border border-[#c93b3b]/85 text-[#ffd2d2] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-full truncate shadow-lg"
+          >
+            {isTouch ? stripPcKeyHints(t.lanCoop.downedBanner) : t.lanCoop.downedBanner}
+          </div>
+        )}
+
+        {hud.coop.active && hud.coop.lastPingText && !hud.coop.localDowned && (
+          <div
+            data-testid="coop-ping-banner"
+            className="px-3.5 py-1 rounded bg-[#10221c]/92 border border-[#5fa88e]/70 text-[#9cecd0] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-full truncate shadow-lg"
+          >
+            ◎ {hud.coop.lastPingText}
+          </div>
+        )}
+
+        {/* Boss Bar (Midnight Watchman / Warden / True Watchman) */}
+        {hud.bossActive && (
+          <div className="w-full max-w-[420px] px-3.5 py-1.5 rounded bg-[#0d121b]/90 border border-[#e8963a]/40">
+            <div className="flex items-center justify-between text-[11px] font-mono-num mb-1">
+              <span className="text-[#e8963a] font-bold tracking-widest">
+                {hud.bossName}
+              </span>
+              <span className="text-[#ece7dc]">
+                {hud.bossHp} / {hud.bossMaxHp}
+              </span>
+            </div>
+            <div className="h-2 w-full bg-[#1d2533] overflow-hidden rounded-xs">
+              <div
+                className="h-full bg-[#c93b3b] transition-transform duration-150 origin-left"
+                style={{
+                  transform: `scaleX(${Math.max(0, hud.bossHp / hud.bossMaxHp)})`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Live Cassette/Radio Story Subtitle Log (docked in stack on touch or portrait viewports) */}
+        {hud.storyLog && !hud.screamerActive && (isTouch || hud.isPortrait) && (
+          <div
+            data-testid="story-radio-log"
+            aria-live="polite"
+            className="w-full rounded bg-[#0a0f18]/90 border border-[#e8963a]/35 shadow-lg shadow-black/50 pointer-events-none px-2.5 py-1.5"
+          >
+            <div className="flex items-center gap-1.5 text-[10px] font-mono-num uppercase tracking-widest text-[#e8963a] font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#e8963a] shrink-0" aria-hidden="true" />
+              <span className="truncate">{hud.storyLog.speaker}</span>
+            </div>
+            <p className="mt-0.5 text-[#ece7dc]/95 leading-snug hud-text-shadow text-[11px] line-clamp-2">
+              {isTouch ? stripPcKeyHints(hud.storyLog.text) : hud.storyLog.text}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Landscape Live Cassette/Radio Story Subtitle Log (bottom center, clear of top HUD) */}
+      {hud.storyLog && !hud.screamerActive && !isTouch && !hud.isPortrait && (
         <div
           data-testid="story-radio-log"
           aria-live="polite"
-          className={`fixed left-1/2 -translate-x-1/2 rounded bg-[#0a0f18]/90 border border-[#e8963a]/35 shadow-lg shadow-black/50 pointer-events-none ${
-            hud.isPortrait
-              ? hud.phase === 'hub'
-                ? 'top-[212px] w-[min(356px,92vw)] px-2.5 py-1.5'
-                : 'top-[178px] w-[min(356px,92vw)] px-2.5 py-1.5'
-              : isTouch
-                ? 'top-14 w-[min(360px,48vw)] px-2.5 py-1.5'
-                : 'bottom-20 w-[min(480px,78vw)] px-3.5 py-2'
-          }`}
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 w-[min(480px,78vw)] px-3.5 py-2 rounded bg-[#0a0f18]/90 border border-[#e8963a]/35 shadow-lg shadow-black/50 pointer-events-none z-20"
         >
           <div className="flex items-center gap-1.5 text-[10px] font-mono-num uppercase tracking-widest text-[#e8963a] font-bold">
             <span className="w-1.5 h-1.5 rounded-full bg-[#e8963a] shrink-0" aria-hidden="true" />
             <span className="truncate">{hud.storyLog.speaker}</span>
           </div>
-          <p
-            className={`mt-0.5 text-[#ece7dc]/95 leading-snug hud-text-shadow ${
-              isTouch ? 'text-[11px] line-clamp-2' : 'text-xs'
-            }`}
-          >
-            {isTouch ? stripPcKeyHints(hud.storyLog.text) : hud.storyLog.text}
+          <p className="mt-0.5 text-[#ece7dc]/95 leading-snug hud-text-shadow text-xs">
+            {hud.storyLog.text}
           </p>
         </div>
       )}
@@ -267,123 +439,20 @@ export function GameHud({
         </div>
       )}
 
-      {/* Character Rank-Up Banner */}
-      {hud.levelUpToast && !hud.rooster.alertActive && (
-        <div
-          data-testid="level-up-toast"
-          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded bg-[#14231e]/94 border border-[#5fa88e]/75 text-[#b5f2dc] font-mono-num text-[11px] font-bold tracking-widest uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
-            isTouch && hud.isPortrait ? 'top-[142px]' : 'top-3'
-          }`}
-        >
-          {hud.levelUpToast}
-        </div>
-      )}
-
-      {/* Quick Cassette Track Toast */}
-      {hud.trackToast && (
-        <div
-          data-testid="track-toast"
-          className={`fixed left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded bg-[#0d121b]/94 border border-[#e8963a]/65 text-[#f0aa54] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-[min(320px,90vw)] truncate shadow-lg ${
-            isTouch && hud.isPortrait
-              ? hud.rooster.alertActive || hud.levelUpToast
-                ? 'top-[176px]'
-                : 'top-[142px]'
-              : hud.rooster.alertActive || hud.levelUpToast
-                ? 'top-12'
-                : 'top-3'
-          }`}
-        >
-          ♪ {hud.trackToast}
-        </div>
-      )}
-
-      {/* Rooster Danger Alert Banner */}
-      {hud.rooster.alertActive && (
-        <div
-          data-testid="rooster-alert-banner"
-          className={`fixed left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded bg-[#1a0d10]/94 border border-[#c93b3b]/75 flex items-center gap-2 shadow-lg ${
-            isTouch && hud.isPortrait
-              ? 'top-[142px] max-w-[92vw]'
-              : 'top-3 max-w-md'
-          }`}
-        >
-          <RoosterCrestIcon className="w-4 h-4 shrink-0" />
-          <span
-            aria-hidden="true"
-            className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#c93b3b]/25 border border-[#c93b3b]/70 text-[#f3c6c6] font-mono-num text-[11px] font-bold leading-none shrink-0"
-            style={{
-              transform: `rotate(${Math.round(
-                (hud.rooster.alertAngleRad * 180) / Math.PI
-              )}deg)`,
-            }}
-          >
-            ↑
-          </span>
-          <span className="font-mono-num text-[11px] font-semibold tracking-wider text-[#f3c6c6] uppercase truncate">
-            {hud.rooster.alertLabel}
-          </span>
-        </div>
-      )}
-
-      {/* LAN Co-op Downed Alert & Squad Ping Callout */}
-      {hud.coop.active && hud.coop.localDowned && (
-        <div
-          data-testid="coop-downed-banner"
-          className={`fixed left-1/2 -translate-x-1/2 px-4 py-1.5 rounded bg-[#2a0c10]/94 border border-[#c93b3b]/85 text-[#ffd2d2] font-mono-num text-xs font-bold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
-            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
-          }`}
-        >
-          {isTouch ? stripPcKeyHints(t.lanCoop.downedBanner) : t.lanCoop.downedBanner}
-        </div>
-      )}
-
-      {hud.coop.active && hud.coop.lastPingText && !hud.coop.localDowned && (
-        <div
-          data-testid="coop-ping-banner"
-          className={`fixed left-1/2 -translate-x-1/2 px-3.5 py-1 rounded bg-[#10221c]/92 border border-[#5fa88e]/70 text-[#9cecd0] font-mono-num text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap max-w-[92vw] truncate shadow-lg ${
-            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
-          }`}
-        >
-          ◎ {hud.coop.lastPingText}
-        </div>
-      )}
-
-      {/* Boss Bar (Chapter 6 Midnight Watchman) */}
-      {hud.bossActive && (
-        <div
-          className={`fixed left-1/2 -translate-x-1/2 w-[min(420px,88vw)] px-3.5 py-1.5 rounded bg-[#0d121b]/90 border border-[#e8963a]/40 ${
-            isTouch && hud.isPortrait ? 'top-[178px]' : 'top-14'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[11px] font-mono-num mb-1">
-            <span className="text-[#e8963a] font-bold tracking-widest">
-              {hud.bossName}
-            </span>
-            <span className="text-[#ece7dc]">
-              {hud.bossHp} / {hud.bossMaxHp}
-            </span>
-          </div>
-          <div className="h-2 w-full bg-[#1d2533] overflow-hidden rounded-xs">
-            <div
-              className="h-full bg-[#c93b3b] transition-transform duration-150 origin-left"
-              style={{
-                transform: `scaleX(${Math.max(0, hud.bossHp / hud.bossMaxHp)})`,
-              }}
-            />
-          </div>
-        </div>
-      )}
-
       {/* TOP-LEFT CLUSTER: Clean Objective, Compass & Mobile Compact Vitality */}
       <div
         data-testid="hud-objective-card"
         className={`fixed top-3 left-3 bg-[#0d121b]/86 border border-[#ece7dc]/14 rounded ${
-          isTouch ? 'max-w-[198px] px-2.5 py-1.5 space-y-1' : 'max-w-sm px-3.5 py-2.5'
+          hud.isPortrait
+            ? 'max-w-[202px] px-2 py-1.5 space-y-0.5'
+            : isTouch
+              ? 'max-w-[198px] px-2.5 py-1.5 space-y-1'
+              : 'max-w-sm px-3.5 py-2.5'
         }`}
       >
         <div
           className={`flex items-center gap-1 text-[11px] font-mono-num text-[#9aa3b0] ${
-            isTouch ? 'flex-nowrap overflow-hidden' : 'flex-wrap gap-1.5'
+            isTouch || hud.isPortrait ? 'flex-nowrap overflow-hidden' : 'flex-wrap gap-1.5'
           }`}
         >
           <span className="text-[#e8963a] font-bold tracking-wider shrink-0">
@@ -392,7 +461,7 @@ export function GameHud({
           <span aria-hidden="true" className="shrink-0">·</span>
           <span
             className={`text-[#ece7dc] font-semibold uppercase tracking-wide ${
-              isTouch ? 'truncate min-w-0' : ''
+              isTouch || hud.isPortrait ? 'truncate min-w-0' : ''
             }`}
           >
             {hud.chapterTitle}
@@ -403,20 +472,32 @@ export function GameHud({
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-[11px] text-[#ece7dc]/85 leading-snug line-clamp-2">
+        <p
+          className={`mt-0.5 text-[#ece7dc]/85 leading-tight ${
+            hud.isPortrait ? 'text-[10.5px] line-clamp-2' : 'text-[11px] line-clamp-2'
+          }`}
+        >
           {hud.objectiveText}
         </p>
-        <div className="mt-1 flex items-center flex-wrap gap-2 text-[10px] font-mono-num text-[#9aa3b0]">
+        <div
+          className={`flex items-center flex-wrap text-[10px] font-mono-num text-[#9aa3b0] ${
+            hud.isPortrait ? 'mt-0.5 gap-x-1.5 gap-y-0.5' : 'mt-1 gap-2'
+          }`}
+        >
           {hud.phase === 'hub' ? (
             <span className="text-[#5fa88e] font-bold uppercase tracking-wider">
               {t.hub.ammoInfiniteBadge}
             </span>
           ) : (
             <>
-              <span className="text-[#5fa88e] font-semibold uppercase truncate max-w-[140px]">
-                {t.zoneNames[hud.zoneId]}
-              </span>
-              <span aria-hidden="true">·</span>
+              {!hud.isPortrait && (
+                <>
+                  <span className="text-[#5fa88e] font-semibold uppercase truncate max-w-[140px]">
+                    {t.zoneNames[hud.zoneId]}
+                  </span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
               <span>
                 {t.kills} {hud.kills}
               </span>
@@ -817,19 +898,11 @@ export function GameHud({
 
       {/* Subtle Pointer-Lock Prompt (Desktop PC ONLY — never shown on touch smartphones or narrow portrait) */}
       {!hud.pointerLocked && !isTouch && (
-        <div className="hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded bg-[#0d121b]/80 border border-[#ece7dc]/14 text-[11px] font-mono-num text-[#ece7dc]/75 tracking-wide whitespace-nowrap">
+        <div className="hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 max-w-[min(540px,calc(100vw-680px))] truncate px-3 py-1 rounded bg-[#0d121b]/80 border border-[#ece7dc]/14 text-[10.5px] font-mono-num text-[#ece7dc]/75 tracking-wide whitespace-nowrap">
           {loc(t.pointerLockHint).replace('[F]', `[${patKey}]`)}
         </div>
       )}
 
-      {/* Psychological Horror Screamer Overlay (Zero Win95 Popups) */}
-      <ScreamerOverlay
-        active={hud.screamerActive}
-        progress={hud.screamerProgress}
-        kind={hud.screamerKind}
-        caption={hud.screamerCaption}
-        intensity={hud.screamerIntensity}
-      />
     </div>
   );
 }

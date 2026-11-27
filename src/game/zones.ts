@@ -96,22 +96,22 @@ export function buildDepotLayout(): SuburbLayout {
   ];
 
   const objectives: ObjectiveSpec[] = [
-    // Chapter 7: KPP-3 Gate Power
-    { id: 'ch7_kpp_1', chapter: 7, label: 'KPP-3 Barrier Breaker (West Booth)', x: -5.8, z: 25.0, completed: false },
-    { id: 'ch7_kpp_2', chapter: 7, label: 'Highway Generator Switch (East Shed)', x: 7.6, z: 25.5, completed: false },
-    // Chapter 8: Bus #404 Black Box & Inspection Pit
-    { id: 'ch8_bus_1', chapter: 8, label: 'Bus #404 Driver Cabin Black Box', x: -4.8, z: 1.5, completed: false },
-    { id: 'ch8_bus_2', chapter: 8, label: 'West Hangar Inspection Console', x: -12.0, z: 3.5, completed: false },
-    // Chapter 9: Fuel Cistern Pumps
-    { id: 'ch9_fuel_1', chapter: 9, label: 'Cistern Pump Valve Alpha (NW)', x: -10.8, z: -25.8, completed: false },
-    { id: 'ch9_fuel_2', chapter: 9, label: 'Cistern Pump Valve Beta (NW)', x: -10.8, z: -35.2, completed: false },
-    // Chapter 10: Repair Bay Capacitors & East Hangar
-    { id: 'ch10_bay_1', chapter: 10, label: 'East Hangar Welding Busbar', x: 12.0, z: -1.0, completed: false },
-    { id: 'ch10_bay_2', chapter: 10, label: 'Central Tarmac Signal Box', x: 5.2, z: -12.5, completed: false },
-    { id: 'ch10_bay_3', chapter: 10, label: 'West Yard Floodlight Relay', x: -29.0, z: 4.0, completed: false },
-    // Chapter 11: Dispatch Tower Triangulation
-    { id: 'ch11_tower_1', chapter: 11, label: 'Dispatch Tower Antenna Dish (NE)', x: 11.8, z: -29.5, completed: false },
-    { id: 'ch11_tower_2', chapter: 11, label: 'North Highway Tunnel Gate Lock', x: 0.0, z: -38.5, completed: false },
+    // Chapter 7: Tactical EMP Breach on KPP-3 Gate Power
+    { id: 'ch7_kpp_1', chapter: 7, label: 'KPP-3 Barrier Breaker (West Booth)', x: -5.8, z: 25.0, completed: false, kind: 'interact' },
+    { id: 'ch7_kpp_2', chapter: 7, label: 'Highway Generator Switch (East Shed)', x: 7.6, z: 25.5, completed: false, kind: 'interact' },
+    // Chapter 8: Hold-the-Zone Telemetry Extraction at Bus #404 & West Hangar
+    { id: 'ch8_bus_1', chapter: 8, label: 'Bus #404 Driver Cabin Black Box', x: -4.8, z: 1.5, completed: false, kind: 'hold', holdDuration: 5.5, holdProgress: 0 },
+    { id: 'ch8_bus_2', chapter: 8, label: 'West Hangar Inspection Console', x: -12.0, z: 3.5, completed: false, kind: 'hold', holdDuration: 5.5, holdProgress: 0 },
+    // Chapter 9: Shoot & Rupture 2 Corrupted Fuel Cistern Valves
+    { id: 'ch9_fuel_1', chapter: 9, label: 'Cistern Pump Valve Alpha (NW)', x: -10.8, z: -25.8, completed: false, kind: 'destroy', maxHp: 220, hp: 220 },
+    { id: 'ch9_fuel_2', chapter: 9, label: 'Cistern Pump Valve Beta (NW)', x: -10.8, z: -35.2, completed: false, kind: 'destroy', maxHp: 220, hp: 220 },
+    // Chapter 10: Shoot & Sever 3 Overloaded Repair Bay Busbars
+    { id: 'ch10_bay_1', chapter: 10, label: 'East Hangar Welding Busbar', x: 12.0, z: -1.0, completed: false, kind: 'destroy', maxHp: 220, hp: 220 },
+    { id: 'ch10_bay_2', chapter: 10, label: 'Central Tarmac Signal Box', x: 5.2, z: -12.5, completed: false, kind: 'destroy', maxHp: 220, hp: 220 },
+    { id: 'ch10_bay_3', chapter: 10, label: 'West Yard Floodlight Relay', x: -29.0, z: 4.0, completed: false, kind: 'destroy', maxHp: 220, hp: 220 },
+    // Chapter 11: Hold Dispatch Tower Dish & North Tunnel Gate Lock
+    { id: 'ch11_tower_1', chapter: 11, label: 'Dispatch Tower Antenna Dish (NE)', x: 11.8, z: -29.5, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
+    { id: 'ch11_tower_2', chapter: 11, label: 'North Highway Tunnel Gate Lock', x: 0.0, z: -38.5, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
   ];
 
   const tapes: TapeSpec[] = [
@@ -171,22 +171,22 @@ export function buildSubstationLayout(): SuburbLayout {
   ];
 
   const objectives: ObjectiveSpec[] = [
-    // Chapter 13: Outer Cooling Pylons
-    { id: 'ch13_pylon_1', chapter: 13, label: 'Cooling Pylon SW Valve', x: -10.4, z: 9.0, completed: false },
-    { id: 'ch13_pylon_2', chapter: 13, label: 'Cooling Pylon SE Valve', x: 10.4, z: 9.0, completed: false },
-    // Chapter 14: Capacitor Bank Drain
-    { id: 'ch14_cap_1', chapter: 14, label: 'West Capacitor Discharge Switch', x: -19.8, z: -4.0, completed: false },
-    { id: 'ch14_cap_2', chapter: 14, label: 'East Capacitor Discharge Switch', x: 19.8, z: -4.0, completed: false },
-    // Chapter 15: Archive Bunker Vault
-    { id: 'ch15_vault_1', chapter: 15, label: 'Archive Bunker Cipher Lock (West)', x: -8.0, z: -29.8, completed: false },
-    { id: 'ch15_vault_2', chapter: 15, label: 'Archive Bunker Master Tape Deck', x: 7.8, z: -29.8, completed: false },
-    // Chapter 16: Mirror Corridor & Northern Pylons
-    { id: 'ch16_mirror_1', chapter: 16, label: 'Cooling Pylon NW Breaker', x: -10.4, z: -17.0, completed: false },
-    { id: 'ch16_mirror_2', chapter: 16, label: 'Cooling Pylon NE Breaker', x: 10.4, z: -17.0, completed: false },
-    { id: 'ch16_mirror_3', chapter: 16, label: 'Gatehouse Grounding Shunt', x: 0.0, z: 22.5, completed: false },
-    // Chapter 17: Core Overload Sequence
-    { id: 'ch17_core_1', chapter: 17, label: 'Resonator Core Limiter West', x: -5.2, z: -4.0, completed: false },
-    { id: 'ch17_core_2', chapter: 17, label: 'Resonator Core Limiter East', x: 5.2, z: -4.0, completed: false },
+    // Chapter 13: Shoot & Destroy Outer Cooling Pylon Anomaly Valves
+    { id: 'ch13_pylon_1', chapter: 13, label: 'Cooling Pylon SW Valve', x: -10.4, z: 9.0, completed: false, kind: 'destroy', maxHp: 240, hp: 240 },
+    { id: 'ch13_pylon_2', chapter: 13, label: 'Cooling Pylon SE Valve', x: 10.4, z: 9.0, completed: false, kind: 'destroy', maxHp: 240, hp: 240 },
+    // Chapter 14: Hold West & East Capacitor Bank Discharge Zones
+    { id: 'ch14_cap_1', chapter: 14, label: 'West Capacitor Discharge Switch', x: -19.8, z: -4.0, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
+    { id: 'ch14_cap_2', chapter: 14, label: 'East Capacitor Discharge Switch', x: 19.8, z: -4.0, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
+    // Chapter 15: Tactical EMP Breach on Archive Bunker Vault
+    { id: 'ch15_vault_1', chapter: 15, label: 'Archive Bunker Cipher Lock (West)', x: -8.0, z: -29.8, completed: false, kind: 'interact' },
+    { id: 'ch15_vault_2', chapter: 15, label: 'Archive Bunker Master Tape Deck', x: 7.8, z: -29.8, completed: false, kind: 'interact' },
+    // Chapter 16: Shoot & Shatter Northern Pylon Breakers & Gatehouse Shunt
+    { id: 'ch16_mirror_1', chapter: 16, label: 'Cooling Pylon NW Breaker', x: -10.4, z: -17.0, completed: false, kind: 'destroy', maxHp: 260, hp: 260 },
+    { id: 'ch16_mirror_2', chapter: 16, label: 'Cooling Pylon NE Breaker', x: 10.4, z: -17.0, completed: false, kind: 'destroy', maxHp: 260, hp: 260 },
+    { id: 'ch16_mirror_3', chapter: 16, label: 'Gatehouse Grounding Shunt', x: 0.0, z: 22.5, completed: false, kind: 'destroy', maxHp: 260, hp: 260 },
+    // Chapter 17: Hold Both Resonator Core Limiter Perimeters
+    { id: 'ch17_core_1', chapter: 17, label: 'Resonator Core Limiter West', x: -5.2, z: -4.0, completed: false, kind: 'hold', holdDuration: 6.5, holdProgress: 0 },
+    { id: 'ch17_core_2', chapter: 17, label: 'Resonator Core Limiter East', x: 5.2, z: -4.0, completed: false, kind: 'hold', holdDuration: 6.5, holdProgress: 0 },
   ];
 
   const tapes: TapeSpec[] = [

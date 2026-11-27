@@ -1,8 +1,11 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import {
   ArrowUp,
+  BookOpen,
+  Car,
   Check,
   Crosshair,
+  Disc3,
   Flashlight,
   Hand,
   Heart,
@@ -242,23 +245,54 @@ export function MobileControls({
         })}
       </div>
 
-      {/* Contextual Interact button when near Fuse Box / Signal Relay / Tape / Teammate */}
-      {hud.nearbyInteractLabel && (
-        <button
-          type="button"
-          data-testid="mobile-interact-btn"
-          style={controlStyle(layout.interact)}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            onInteract();
-          }}
-          aria-label={t.mobileInteract}
-          className="fixed pointer-events-auto touch-control-surface px-3.5 py-2 rounded-full bg-[#1a3a2f]/95 border-2 border-[#5fa88e] text-[#b9f7e1] font-mono-num text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg whitespace-nowrap animate-pulse"
-        >
-          <Hand className="w-4 h-4 shrink-0" />
-          <span>{t.mobileInteract}</span>
-        </button>
-      )}
+      {/* Contextual Interact button when near Hub Car / Specs Stand / Fuse Box / Tape / Teammate */}
+      {hud.nearbyInteractLabel && (() => {
+        const kind = hud.nearbyInteractKind;
+        const label =
+          kind === 'hub_car'
+            ? hud.hub.inCar
+              ? t.mobileInteractLabels.hubCarLeave
+              : t.mobileInteractLabels.hubCarBoard
+            : kind === 'hub_specs'
+              ? t.mobileInteractLabels.hubSpecs
+              : kind === 'tape'
+                ? t.mobileInteractLabels.tape
+                : kind === 'revive'
+                  ? t.mobileInteractLabels.revive
+                  : t.mobileInteractLabels.objective;
+        const IconComp =
+          kind === 'hub_car'
+            ? Car
+            : kind === 'hub_specs'
+              ? BookOpen
+              : kind === 'tape'
+                ? Disc3
+                : kind === 'revive'
+                  ? Heart
+                  : Hand;
+        const accentCls =
+          kind === 'hub_car'
+            ? 'bg-[#3b2610]/95 border-[#e8963a] text-[#ffe1a8]'
+            : kind === 'tape'
+              ? 'bg-[#2b2412]/95 border-[#f2c464] text-[#fff0c4]'
+              : 'bg-[#1a3a2f]/95 border-[#5fa88e] text-[#b9f7e1]';
+        return (
+          <button
+            type="button"
+            data-testid="mobile-interact-btn"
+            style={controlStyle(layout.interact)}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onInteract();
+            }}
+            aria-label={label}
+            className={`fixed pointer-events-auto touch-control-surface px-3.5 py-2 rounded-full border-2 font-mono-num text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg whitespace-nowrap animate-pulse ${accentCls}`}
+          >
+            <IconComp className="w-4 h-4 shrink-0" />
+            <span>{label}</span>
+          </button>
+        );
+      })()}
 
       {/* Pat Rooster */}
       <button

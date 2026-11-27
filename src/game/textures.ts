@@ -2500,3 +2500,370 @@ export function createFirstPersonHandMaterials(maxAnisotropy = 8): {
   };
 }
 
+export interface HubCourtyardMaterials {
+  meadow: THREE.MeshStandardMaterial;
+  courtyardConcrete: THREE.MeshStandardMaterial;
+  rangeGravel: THREE.MeshStandardMaterial;
+  hubStucco: THREE.MeshStandardMaterial;
+  corrugatedGreen: THREE.MeshStandardMaterial;
+  sandbagBurlap: THREE.MeshStandardMaterial;
+}
+
+/**
+ * Cached golden-hour PBR material suite exclusively for the Pre-Match Hub
+ * ("Гараж Савельевых · 1994"): interlocking Soviet PDN concrete slabs, compacted
+ * firing-range sand/gravel, sunlit autumn meadow, textured warm stucco plaster,
+ * corrugated painted garage steel, and woven olive burlap sandbags.
+ */
+export function createHubCourtyardMaterials(
+  maxAnisotropy = 4
+): HubCourtyardMaterials {
+  const rand = seededRand(19940814);
+
+  // 1. Sunlit Golden-Hour Autumn Meadow Grass (512x512 + Sobel PBR)
+  const mCanvas = document.createElement('canvas');
+  mCanvas.width = 512;
+  mCanvas.height = 512;
+  const mctx = mCanvas.getContext('2d', { willReadFrequently: true })!;
+  mctx.fillStyle = '#5c7042';
+  mctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 110; i++) {
+    mctx.fillStyle =
+      i % 3 === 0 ? '#748449' : i % 2 === 0 ? '#4d5f36' : '#857748';
+    mctx.globalAlpha = 0.36;
+    mctx.beginPath();
+    mctx.arc(rand() * 512, rand() * 512, 18 + rand() * 52, 0, Math.PI * 2);
+    mctx.fill();
+  }
+  mctx.globalAlpha = 1;
+  for (let b = 0; b < 1400; b++) {
+    const bx = rand() * 512;
+    const by = rand() * 512;
+    mctx.strokeStyle =
+      b % 5 === 0 ? '#978d4f' : b % 2 === 0 ? '#6e844a' : '#3a4b29';
+    mctx.lineWidth = 1.4;
+    mctx.beginPath();
+    mctx.moveTo(bx, by);
+    mctx.lineTo(bx + (rand() - 0.5) * 7, by - 5 - rand() * 10);
+    mctx.stroke();
+  }
+  // Scattered golden autumn birch leaves
+  for (let lf = 0; lf < 85; lf++) {
+    mctx.fillStyle = lf % 2 === 0 ? '#c89b3c' : '#b26e2d';
+    mctx.beginPath();
+    mctx.ellipse(
+      rand() * 512,
+      rand() * 512,
+      3 + rand() * 3.5,
+      1.8 + rand() * 2,
+      rand() * Math.PI,
+      0,
+      Math.PI * 2
+    );
+    mctx.fill();
+  }
+  const mPbr = buildSobelPbrTextures(mCanvas, maxAnisotropy, {
+    normalStrength: 2.2,
+    roughMin: 0.78,
+    roughMax: 0.98,
+    aoStrength: 0.65,
+  });
+  mPbr.map.repeat.set(22, 22);
+  mPbr.normalMap.repeat.set(22, 22);
+  mPbr.roughnessMap.repeat.set(22, 22);
+  mPbr.aoMap.repeat.set(22, 22);
+
+  // 2. Interlocking Soviet PDN Concrete Courtyard Slabs (512x512 + Sobel PBR)
+  const cCanvas = document.createElement('canvas');
+  cCanvas.width = 512;
+  cCanvas.height = 512;
+  const cctx = cCanvas.getContext('2d', { willReadFrequently: true })!;
+  cctx.fillStyle = '#978f82';
+  cctx.fillRect(0, 0, 512, 512);
+  const slabCols = 2;
+  const slabRows = 4;
+  const sw = 512 / slabCols;
+  const sh = 512 / slabRows;
+  for (let r = 0; r < slabRows; r++) {
+    for (let c = 0; c < slabCols; c++) {
+      const x = c * sw;
+      const y = r * sh;
+      const tone = Math.round((rand() - 0.5) * 20);
+      cctx.fillStyle = `rgb(${152 + tone}, ${144 + tone}, ${131 + tone})`;
+      cctx.fillRect(x + 4, y + 4, sw - 8, sh - 8);
+      // Warm sunlit slab bevel highlight
+      cctx.fillStyle = 'rgba(235, 226, 208, 0.28)';
+      cctx.fillRect(x + 4, y + 4, sw - 8, 3);
+      cctx.fillRect(x + 4, y + 4, 3, sh - 8);
+      // Recessed tar/dirt expansion joint + hints of yard moss
+      cctx.strokeStyle = '#3b3730';
+      cctx.lineWidth = 6;
+      cctx.strokeRect(x, y, sw, sh);
+      cctx.strokeStyle = 'rgba(72, 88, 48, 0.45)';
+      cctx.lineWidth = 2.5;
+      cctx.strokeRect(x + 2, y + 2, sw - 4, sh - 4);
+      // Subtle crane lifting-loop recessed pockets
+      cctx.fillStyle = '#47423a';
+      cctx.fillRect(x + 18, y + sh * 0.5 - 5, 10, 10);
+      cctx.fillRect(x + sw - 28, y + sh * 0.5 - 5, 10, 10);
+    }
+  }
+  // Aggregate grit, tire scuff patches & weathered cracks
+  for (let i = 0; i < 36; i++) {
+    cctx.fillStyle =
+      i % 4 === 0 ? 'rgba(46, 42, 36, 0.22)' : 'rgba(188, 178, 160, 0.18)';
+    cctx.beginPath();
+    cctx.ellipse(
+      rand() * 512,
+      rand() * 512,
+      14 + rand() * 38,
+      10 + rand() * 26,
+      rand() * Math.PI,
+      0,
+      Math.PI * 2
+    );
+    cctx.fill();
+  }
+  for (let i = 0; i < 2400; i++) {
+    cctx.fillStyle =
+      i % 2 === 0 ? 'rgba(35, 32, 28, 0.18)' : 'rgba(230, 224, 210, 0.14)';
+    cctx.fillRect(rand() * 512, rand() * 512, 2, 2);
+  }
+  const cPbr = buildSobelPbrTextures(cCanvas, maxAnisotropy, {
+    normalStrength: 2.8,
+    roughMin: 0.68,
+    roughMax: 0.96,
+    aoStrength: 0.78,
+  });
+  cPbr.map.repeat.set(7, 6);
+  cPbr.normalMap.repeat.set(7, 6);
+  cPbr.roughnessMap.repeat.set(7, 6);
+  cPbr.aoMap.repeat.set(7, 6);
+
+  // 3. Compacted Ochre-Grey Firing Range Sand & Gravel (512x512 + Sobel PBR)
+  const gCanvas = document.createElement('canvas');
+  gCanvas.width = 512;
+  gCanvas.height = 512;
+  const gctx = gCanvas.getContext('2d', { willReadFrequently: true })!;
+  gctx.fillStyle = '#8b7e68';
+  gctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 95; i++) {
+    gctx.fillStyle =
+      i % 3 === 0 ? '#a19175' : i % 2 === 0 ? '#746854' : '#655c4d';
+    gctx.globalAlpha = 0.32;
+    gctx.beginPath();
+    gctx.ellipse(
+      rand() * 512,
+      rand() * 512,
+      16 + rand() * 44,
+      8 + rand() * 22,
+      (rand() - 0.5) * 0.4,
+      0,
+      Math.PI * 2
+    );
+    gctx.fill();
+  }
+  gctx.globalAlpha = 1;
+  // Raked firing-range gravel grooves & pebbles
+  for (let y = 0; y < 512; y += 6) {
+    gctx.fillStyle = y % 12 === 0 ? 'rgba(54, 46, 36, 0.14)' : 'rgba(218, 202, 174, 0.1)';
+    gctx.fillRect(0, y, 512, 2);
+  }
+  for (let p = 0; p < 2200; p++) {
+    const px = rand() * 512;
+    const py = rand() * 512;
+    const pr = 1 + rand() * 2.4;
+    gctx.fillStyle =
+      p % 3 === 0
+        ? 'rgba(42, 36, 28, 0.34)'
+        : p % 2 === 0
+          ? 'rgba(204, 190, 166, 0.32)'
+          : 'rgba(130, 118, 98, 0.35)';
+    gctx.fillRect(px, py, pr, pr);
+  }
+  const gPbr = buildSobelPbrTextures(gCanvas, maxAnisotropy, {
+    normalStrength: 3.1,
+    roughMin: 0.82,
+    roughMax: 0.99,
+    aoStrength: 0.72,
+  });
+  gPbr.map.repeat.set(5, 4);
+  gPbr.normalMap.repeat.set(5, 4);
+  gPbr.roughnessMap.repeat.set(5, 4);
+  gPbr.aoMap.repeat.set(5, 4);
+
+  // 4. Warm Sunlit Soviet Garage Plaster & Exposed Brick Stucco (512x512 + Sobel PBR)
+  const sCanvas = document.createElement('canvas');
+  sCanvas.width = 512;
+  sCanvas.height = 512;
+  const sctx = sCanvas.getContext('2d', { willReadFrequently: true })!;
+  sctx.fillStyle = '#cdb899';
+  sctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 70; i++) {
+    sctx.fillStyle = i % 2 === 0 ? '#b9a282' : '#decbb0';
+    sctx.globalAlpha = 0.28;
+    sctx.beginPath();
+    sctx.arc(rand() * 512, rand() * 512, 18 + rand() * 56, 0, Math.PI * 2);
+    sctx.fill();
+  }
+  sctx.globalAlpha = 1;
+  // Subtle exposed red-brick wear patches & hairline plaster cracks
+  for (let i = 0; i < 16; i++) {
+    const bx = Math.floor(rand() * 14) * 34;
+    const by = Math.floor(rand() * 24) * 20;
+    sctx.fillStyle = '#5c4232';
+    sctx.fillRect(bx - 2, by - 2, 32, 16);
+    sctx.fillStyle = i % 2 === 0 ? '#8c4b36' : '#9c5942';
+    sctx.fillRect(bx, by, 28, 12);
+  }
+  // Rain runoff & lower damp band
+  const dampGrad = sctx.createLinearGradient(0, 390, 0, 512);
+  dampGrad.addColorStop(0, 'rgba(66, 56, 44, 0)');
+  dampGrad.addColorStop(1, 'rgba(66, 56, 44, 0.36)');
+  sctx.fillStyle = dampGrad;
+  sctx.fillRect(0, 390, 512, 122);
+  for (let i = 0; i < 1800; i++) {
+    sctx.fillStyle =
+      i % 2 === 0 ? 'rgba(55, 45, 36, 0.14)' : 'rgba(248, 240, 224, 0.14)';
+    sctx.fillRect(rand() * 512, rand() * 512, 2, 2);
+  }
+  const sPbr = buildSobelPbrTextures(sCanvas, maxAnisotropy, {
+    normalStrength: 2.6,
+    roughMin: 0.72,
+    roughMax: 0.96,
+    aoStrength: 0.7,
+  });
+  sPbr.map.repeat.set(4, 1.5);
+  sPbr.normalMap.repeat.set(4, 1.5);
+  sPbr.roughnessMap.repeat.set(4, 1.5);
+  sPbr.aoMap.repeat.set(4, 1.5);
+
+  // 5. Corrugated Soviet Garage Door & Awning Steel (256x256 + Sobel PBR)
+  const cgCanvas = document.createElement('canvas');
+  cgCanvas.width = 256;
+  cgCanvas.height = 256;
+  const cgctx = cgCanvas.getContext('2d', { willReadFrequently: true })!;
+  for (let x = 0; x < 256; x++) {
+    const rib = Math.sin((x / 256) * Math.PI * 2 * 16) * 0.5 + 0.5;
+    const r = Math.round(44 + rib * 30);
+    const g = Math.round(68 + rib * 38);
+    const b = Math.round(56 + rib * 30);
+    cgctx.fillStyle = `rgb(${r},${g},${b})`;
+    cgctx.fillRect(x, 0, 1, 256);
+  }
+  // Scuffed paint scratches & bottom rust edge
+  for (let i = 0; i < 75; i++) {
+    cgctx.fillStyle =
+      i % 3 === 0 ? 'rgba(128, 62, 32, 0.34)' : 'rgba(165, 178, 170, 0.18)';
+    cgctx.fillRect(rand() * 256, rand() * 256, 3 + rand() * 14, 6 + rand() * 34);
+  }
+  const cgPbr = buildSobelPbrTextures(cgCanvas, maxAnisotropy, {
+    normalStrength: 3.4,
+    roughMin: 0.34,
+    roughMax: 0.78,
+    aoStrength: 0.72,
+  });
+  cgPbr.map.repeat.set(2, 1);
+  cgPbr.normalMap.repeat.set(2, 1);
+  cgPbr.roughnessMap.repeat.set(2, 1);
+  cgPbr.aoMap.repeat.set(2, 1);
+
+  // 6. Woven Olive-Khaki Burlap Sandbag Canvas (256x256 + Sobel PBR)
+  const sbCanvas = document.createElement('canvas');
+  sbCanvas.width = 256;
+  sbCanvas.height = 256;
+  const sbctx = sbCanvas.getContext('2d', { willReadFrequently: true })!;
+  sbctx.fillStyle = '#8b8061';
+  sbctx.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < 256; y += 4) {
+    sbctx.fillStyle = y % 8 === 0 ? 'rgba(52, 46, 32, 0.24)' : 'rgba(186, 174, 138, 0.18)';
+    sbctx.fillRect(0, y, 256, 2);
+  }
+  for (let x = 0; x < 256; x += 4) {
+    sbctx.fillStyle = x % 8 === 0 ? 'rgba(52, 46, 32, 0.22)' : 'rgba(180, 168, 132, 0.16)';
+    sbctx.fillRect(x, 0, 2, 256);
+  }
+  for (let i = 0; i < 40; i++) {
+    sbctx.fillStyle = 'rgba(60, 52, 36, 0.18)';
+    sbctx.beginPath();
+    sbctx.arc(rand() * 256, rand() * 256, 8 + rand() * 22, 0, Math.PI * 2);
+    sbctx.fill();
+  }
+  const sbPbr = buildSobelPbrTextures(sbCanvas, maxAnisotropy, {
+    normalStrength: 2.8,
+    roughMin: 0.84,
+    roughMax: 0.99,
+    aoStrength: 0.75,
+  });
+
+  return {
+    meadow: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: mPbr.map,
+      normalMap: mPbr.normalMap,
+      normalScale: new THREE.Vector2(1.0, 1.0),
+      roughnessMap: mPbr.roughnessMap,
+      aoMap: mPbr.aoMap,
+      aoMapIntensity: 0.65,
+      roughness: 1.0,
+      metalness: 0.02,
+    }),
+    courtyardConcrete: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: cPbr.map,
+      normalMap: cPbr.normalMap,
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughnessMap: cPbr.roughnessMap,
+      aoMap: cPbr.aoMap,
+      aoMapIntensity: 0.72,
+      roughness: 1.0,
+      metalness: 0.05,
+    }),
+    rangeGravel: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: gPbr.map,
+      normalMap: gPbr.normalMap,
+      normalScale: new THREE.Vector2(1.2, 1.2),
+      roughnessMap: gPbr.roughnessMap,
+      aoMap: gPbr.aoMap,
+      aoMapIntensity: 0.68,
+      roughness: 1.0,
+      metalness: 0.02,
+    }),
+    hubStucco: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: sPbr.map,
+      normalMap: sPbr.normalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
+      roughnessMap: sPbr.roughnessMap,
+      aoMap: sPbr.aoMap,
+      aoMapIntensity: 0.72,
+      roughness: 1.0,
+      metalness: 0.04,
+    }),
+    corrugatedGreen: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: cgPbr.map,
+      normalMap: cgPbr.normalMap,
+      normalScale: new THREE.Vector2(1.35, 1.35),
+      roughnessMap: cgPbr.roughnessMap,
+      aoMap: cgPbr.aoMap,
+      aoMapIntensity: 0.75,
+      roughness: 0.9,
+      metalness: 0.42,
+    }),
+    sandbagBurlap: new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: sbPbr.map,
+      normalMap: sbPbr.normalMap,
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughnessMap: sbPbr.roughnessMap,
+      aoMap: sbPbr.aoMap,
+      aoMapIntensity: 0.78,
+      roughness: 1.0,
+      metalness: 0.02,
+    }),
+  };
+}
+
+

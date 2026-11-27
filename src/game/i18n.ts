@@ -15,6 +15,7 @@ import type {
   CutsceneDef,
   DifficultyId,
   EnemyKind,
+  GraphicsQuality,
   Language,
   MusicTrackId,
   RoosterNameId,
@@ -30,6 +31,7 @@ export const LANG_STORAGE_KEY = 'negruzino_language';
 export const ROOSTER_NAME_STORAGE_KEY = 'negruzino_rooster_name';
 export const DIFFICULTY_STORAGE_KEY = 'negruzino_difficulty';
 export const SENSITIVITY_STORAGE_KEY = 'negruzino_mouse_sensitivity';
+export const GRAPHICS_QUALITY_STORAGE_KEY = 'negruzino_graphics_quality';
 
 export function loadInitialLanguage(): Language {
   try {
@@ -101,6 +103,24 @@ export function loadInitialSensitivity(): number {
 export function saveSensitivity(sens: number): void {
   try {
     window.localStorage.setItem(SENSITIVITY_STORAGE_KEY, String(sens));
+  } catch {
+    // Ignore storage access failures
+  }
+}
+
+export function loadInitialGraphicsQuality(isTouchDevice: boolean): GraphicsQuality {
+  try {
+    const saved = window.localStorage.getItem(GRAPHICS_QUALITY_STORAGE_KEY);
+    if (saved === 'eco' || saved === 'balanced' || saved === 'high') return saved;
+  } catch {
+    // Ignore storage access failures
+  }
+  return isTouchDevice ? 'eco' : 'balanced';
+}
+
+export function saveGraphicsQuality(quality: GraphicsQuality): void {
+  try {
+    window.localStorage.setItem(GRAPHICS_QUALITY_STORAGE_KEY, quality);
   } catch {
     // Ignore storage access failures
   }
@@ -221,9 +241,19 @@ export interface UiStrings {
   mobileScope: string;
   mobileReload: string;
   mobileInteract: string;
+  mobileInteractLabels: {
+    objective: string;
+    tape: string;
+    revive: string;
+    hubCarBoard: string;
+    hubCarLeave: string;
+    hubSpecs: string;
+  };
   mobilePat: string;
   mobileJump: string;
   mobileFlash: string;
+  graphicsQualityLabel: string;
+  graphicsModes: Record<GraphicsQuality, { label: string; hint: string }>;
   hudEditorTitle: string;
   hudEditorDesc: string;
   hudEditorOpenBtn: string;
@@ -565,9 +595,32 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     mobileScope: 'Прицел',
     mobileReload: 'Перезарядка',
     mobileInteract: 'Щиток',
+    mobileInteractLabels: {
+      objective: 'Щиток',
+      tape: 'Кассета',
+      revive: 'Поднять',
+      hubCarBoard: 'В машину',
+      hubCarLeave: 'Выйти',
+      hubSpecs: 'Стенд ТТХ',
+    },
     mobilePat: 'Погладить',
     mobileJump: 'Прыжок',
     mobileFlash: 'Фонарик',
+    graphicsQualityLabel: 'Графика и энергосбережение',
+    graphicsModes: {
+      eco: {
+        label: 'Эко (Батарея)',
+        hint: '36 FPS, без тяжёлых пост-эффектов, мягкое энергопотребление и меньше нагрева смартфона.',
+      },
+      balanced: {
+        label: 'Баланс',
+        hint: '60 FPS, оптимизированный свет, плавный bloom и умеренная нагрузка на видеокарту.',
+      },
+      high: {
+        label: 'Высокое',
+        hint: '60 FPS, тени 2048px, полный 4x MSAA и динамические тени фонарика.',
+      },
+    },
     pauseHeading: 'Пауза',
     pauseSubcopy: 'Фонари замерли, пока вы переводите дух.',
     victoryHeading: 'Рассвет над Негрузино',
@@ -754,7 +807,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     chapterMeta: [
       {
         title: 'Глава 1: Магнитная полночь',
-        objectiveSummary: 'Запустите 2 уличных щитка и переживите первую засаду петли.',
+        objectiveSummary: 'Расстреляйте 2 аномальных узла у щитков и переживите первую засаду петли.',
         introCutscene: {
           id: 'ch1_intro',
           chapter: 1,
@@ -782,7 +835,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Глава 2: Плёнки Савельева',
-        objectiveSummary: 'Пройдите во дворы №12 и №07 и настройте 2 радиоретранслятора.',
+        objectiveSummary: 'Удерживайте 2 зоны синхронизации во дворах №12 и №07 под натиском теней.',
         introCutscene: {
           id: 'ch2_intro',
           chapter: 2,
@@ -810,7 +863,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Глава 3: Глухой квартал',
-        objectiveSummary: 'Прорвитесь в тёмные дворы №08 и №15 и перезапустите 2 стабилизатора.',
+        objectiveSummary: 'Прорвитесь в тёмные дворы №08 и №15 и активируйте 2 ЭМИ-стабилизатора.',
         introCutscene: {
           id: 'ch3_intro',
           chapter: 3,
@@ -838,7 +891,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Глава 4: Рейс №404',
-        objectiveSummary: 'Соберите 3 маяка периметра у северных домов и заглохшего «Москвича».',
+        objectiveSummary: 'Расстреляйте 3 маяка-глушилки у северных дворов и заглохшего «Москвича».',
         introCutscene: {
           id: 'ch4_intro',
           chapter: 4,
@@ -866,7 +919,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Глава 5: Противофаза подстанции',
-        objectiveSummary: 'Сбросьте 2 заземления у центральной вышки и выдержите штурм теней.',
+        objectiveSummary: 'Удерживайте 2 зоны заземления у центральной вышки и выдержите штурм теней.',
         introCutscene: {
           id: 'ch5_intro',
           chapter: 5,
@@ -1040,7 +1093,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     storyLogs: {
       ch1_start: {
         speaker: 'РАЦИЯ · 23:59',
-        text: '«Москвич» заглох у дома №14. Включите 2 уличных щитка [E] и ищите янтарные кассеты деда по дворам.',
+        text: '«Москвич» заглох у дома №14. Расстреляйте 2 аномальных узла у щитков и ищите янтарные кассеты деда по дворам.',
       },
       ch1_fuse_1: {
         speaker: 'ДНЕВНИК САВЕЛЬЕВА · ЩИТОК №14',
@@ -1052,7 +1105,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch2_start: {
         speaker: 'КАССЕТА №02 · МИХАИЛ САВЕЛЬЕВ',
-        text: '«Я боялся завтрашнего дня и запер всех в дожде. Настрой два садовых ретранслятора [E]».',
+        text: '«Я боялся завтрашнего дня и запер всех в дожде. Удерживай зоны синхронизации во дворах №12 и №07!»',
       },
       ch2_relay_1: {
         speaker: 'РЕТРАНСЛЯТОР А · ДВОР №12',
@@ -1064,7 +1117,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch3_start: {
         speaker: 'СОСЕД · ДОМ №08 · 00:24',
-        text: '«Свет погас по обе стороны! Включай фонарик [L] и перезапусти стабилизаторы во дворах №08 и №15!»',
+        text: '«Свет погас по обе стороны! Включай фонарик [L] и активируй ЭМИ-стабилизаторы во дворах №08 и №15!»',
       },
       ch3_stab_1: {
         speaker: 'СТАБИЛИЗАТОР №08',
@@ -1072,11 +1125,11 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch3_stab_2: {
         speaker: 'СТАБИЛИЗАТОР №15',
-        text: 'Обе фазы выровнены! Осталось сломать зеркальный периметр у северных домов и южного въезда.',
+        text: 'Обе фазы выровнены! Осталось разбить глушилки периметра у северных домов и южного въезда.',
       },
       ch4_start: {
         speaker: 'ДИСПЕТЧЕРСКАЯ · 00:38',
-        text: 'Автобус уцелел в ту ночь! Активируйте 3 маяка периметра [E] — во дворах №04, №03 и у «Москвича».',
+        text: 'Автобус уцелел в ту ночь! Расстреляйте 3 маяка-глушилки во дворах №04, №03 и у «Москвича».',
       },
       ch4_beacon_1: {
         speaker: 'МАЯК №04 · СЕВЕРНЫЙ РУБЕЖ',
@@ -1084,7 +1137,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch4_beacon_2: {
         speaker: 'МАЯК №03 · ВОСТОЧНЫЙ РУБЕЖ',
-        text: 'Вторая дуга замкнута! Остался последний маяк на южном шоссе рядом с вашим «Москвичом».',
+        text: 'Вторая дуга пробита! Остался последний маяк на южном шоссе рядом с вашим «Москвичом».',
       },
       ch4_beacon_3: {
         speaker: 'ДОРОЖНОЕ ЗЕРКАЛО · ШОССЕ',
@@ -1092,7 +1145,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch5_start: {
         speaker: 'ПОДСТАНЦИЯ · 00:50',
-        text: 'Критический резонанс! Сбросьте 2 заземления по бокам площади [E] и отбейте наступающую волну.',
+        text: 'Критический резонанс! Удерживайте обе зоны заземления по бокам площади под натиском теней.',
       },
       ch5_core_1: {
         speaker: 'ЗАЗЕМЛЕНИЕ ЗАПАД',
@@ -1415,9 +1468,32 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     mobileScope: 'Scope',
     mobileReload: 'Reload',
     mobileInteract: 'Activate',
+    mobileInteractLabels: {
+      objective: 'Panel',
+      tape: 'Tape',
+      revive: 'Revive',
+      hubCarBoard: 'Board Car',
+      hubCarLeave: 'Exit Car',
+      hubSpecs: 'Specs',
+    },
     mobilePat: 'Pat',
     mobileJump: 'Jump',
     mobileFlash: 'Light',
+    graphicsQualityLabel: 'Graphics & Power Mode',
+    graphicsModes: {
+      eco: {
+        label: 'Eco (Battery)',
+        hint: '36 FPS cap, direct shading without heavy bloom passes — minimizes battery drain & heat.',
+      },
+      balanced: {
+        label: 'Balanced',
+        hint: '60 FPS cap, tuned shadows & lightweight post-processing for smooth everyday play.',
+      },
+      high: {
+        label: 'High',
+        hint: '60 FPS, 2048px shadows, 4x MSAA bloom & dynamic flashlight shadows.',
+      },
+    },
     pauseHeading: 'Paused',
     pauseSubcopy: 'The streetlamps hold still while you catch your breath.',
     victoryHeading: 'Dawn Over Negruzino',
@@ -1596,7 +1672,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     chapterMeta: [
       {
         title: 'Chapter 1: Magnetic Midnight',
-        objectiveSummary: 'Restore 2 street fuse boxes and survive the first ambush.',
+        objectiveSummary: 'Shoot & shatter 2 anomaly fuse cores and survive the first ambush.',
         introCutscene: {
           id: 'ch1_intro',
           chapter: 1,
@@ -1624,7 +1700,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Chapter 2: Saveliev’s Tapes',
-        objectiveSummary: 'Cross Yards #12 & #07 and align 2 courtyard Signal Relays.',
+        objectiveSummary: 'Hold 2 signal relay zones in Yards #12 & #07 against incoming waves.',
         introCutscene: {
           id: 'ch2_intro',
           chapter: 2,
@@ -1652,7 +1728,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Chapter 3: The Blind Quarter',
-        objectiveSummary: 'Push into dark Yards #08 & #15 and reboot 2 Phase Stabilizers.',
+        objectiveSummary: 'Push into dark Yards #08 & #15 and trigger 2 EMP Phase Stabilizers.',
         introCutscene: {
           id: 'ch3_intro',
           chapter: 3,
@@ -1680,7 +1756,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Chapter 4: Route 404',
-        objectiveSummary: 'Activate 3 outer Perimeter Beacons across the northern yards & south road.',
+        objectiveSummary: 'Shoot & destroy 3 perimeter jammer cores across the northern yards & south road.',
         introCutscene: {
           id: 'ch4_intro',
           chapter: 4,
@@ -1708,7 +1784,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       {
         title: 'Chapter 5: Counter-Phase',
-        objectiveSummary: 'Trip 2 Substation Ground Couplings in the square and survive the siege.',
+        objectiveSummary: 'Hold 2 Substation Grounding zones in the square and survive the siege.',
         introCutscene: {
           id: 'ch5_intro',
           chapter: 5,
@@ -1882,7 +1958,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
     storyLogs: {
       ch1_start: {
         speaker: 'CAR RADIO · 23:59',
-        text: 'Your Moskvitch stalled outside House #14. Restore 2 Fuse Boxes [E] and search the yards for glowing cassette tapes.',
+        text: 'Your Moskvitch stalled outside House #14. Shoot & shatter 2 Anomaly Fuse Cores and search the yards for glowing cassette tapes.',
       },
       ch1_fuse_1: {
         speaker: 'SAVELIEV’S LOG · FUSE #14',
@@ -1894,7 +1970,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch2_start: {
         speaker: 'TAPE #02 · MIKHAIL SAVELIEV',
-        text: '“I feared tomorrow and trapped us in rain. Tune both courtyard Signal Relays [E].”',
+        text: '“I feared tomorrow and trapped us in rain. Hold both Signal Relay zones in Yards #12 & #07!”',
       },
       ch2_relay_1: {
         speaker: 'SIGNAL RELAY A · YARD #12',
@@ -1902,11 +1978,11 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch2_relay_2: {
         speaker: 'SIGNAL RELAY B · YARD #07',
-        text: 'Signal locked on the blind quarter! Streetlamps at Houses #08 & #15 just went dark—reboot their stabilizers.',
+        text: 'Signal locked on the blind quarter! Streetlamps at Houses #08 & #15 just went dark—trigger their EMP stabilizers.',
       },
       ch3_start: {
         speaker: 'NEIGHBOR · HOUSE #08 · 00:24',
-        text: '“Lights are dead on both sides! Switch on your flashlight [L] and reboot the stabilizers in Yards #08 & #15!”',
+        text: '“Lights are dead on both sides! Switch on your flashlight [L] and trigger the EMP stabilizers in Yards #08 & #15!”',
       },
       ch3_stab_1: {
         speaker: 'STABILIZER #08',
@@ -1914,11 +1990,11 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch3_stab_2: {
         speaker: 'STABILIZER #15',
-        text: 'Both phases aligned! Now shatter the outer mirror boundary at the northern yards and south highway.',
+        text: 'Both phases aligned! Now shatter the 3 jammer cores at the northern yards and south highway.',
       },
       ch4_start: {
         speaker: 'DISPATCH · 00:38',
-        text: 'The bus survived that night! Activate 3 Perimeter Beacons [E] in Yards #04, #03, and beside your Moskvitch.',
+        text: 'The bus survived that night! Shoot & destroy 3 Perimeter Jammer Cores in Yards #04, #03, and beside your Moskvitch.',
       },
       ch4_beacon_1: {
         speaker: 'BEACON #04 · NORTH-WEST',
@@ -1926,7 +2002,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch4_beacon_2: {
         speaker: 'BEACON #03 · NORTH-EAST',
-        text: 'Second arc closed! One final mirror beacon waits beside your stalled Moskvitch on the south road.',
+        text: 'Second arc broken! One final jammer core waits beside your stalled Moskvitch on the south road.',
       },
       ch4_beacon_3: {
         speaker: 'HIGHWAY MIRROR · SOUTH ROAD',
@@ -1934,7 +2010,7 @@ export const TRANSLATIONS: Record<Language, UiStrings> = {
       },
       ch5_start: {
         speaker: 'SUBSTATION · 00:50',
-        text: 'Critical resonance! Trip both Ground Couplings [E] flanking the square and survive the surge.',
+        text: 'Critical resonance! Hold both Grounding Zones flanking the square against the incoming surge.',
       },
       ch5_core_1: {
         speaker: 'WEST COUPLING',

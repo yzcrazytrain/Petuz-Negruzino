@@ -8,6 +8,7 @@ import type {
   CoopScalingProfile,
   DifficultyId,
   EnemyKind,
+  GraphicsQuality,
   HouseLot,
   LampSpec,
   Language,
@@ -169,24 +170,25 @@ export function buildSuburbLayout(): SuburbLayout {
     { id: 'lamp_6', x: 5.4, z: -42, armDirX: -1, flickerSeed: 9.2, hasPointLight: false },
   ];
 
-  // Chapter objectives placed cleanly in open yards & street landmarks across Chapters 1–5
+  // Chapter objectives across Chapters 1–5 with varied FPS mechanics:
+  // 'destroy' = shoot glowing anomaly cores from range, 'hold' = defend 4.8m perimeter ring, 'interact' = tactical EMP breach
   const objectives: ObjectiveSpec[] = [
-    // Chapter 1: 2 Street Fuse Boxes
-    { id: 'ch1_fuse_1', chapter: 1, label: 'Fuse Box #14 (West Yard)', x: -12.2, z: 29.0, completed: false },
-    { id: 'ch1_fuse_2', chapter: 1, label: 'Fuse Box #11 (East Porch)', x: 12.4, z: 14.0, completed: false },
-    // Chapter 2: 2 Courtyard Signal Relays
-    { id: 'ch2_relay_1', chapter: 2, label: 'Signal Relay A (Yard #12)', x: -12.0, z: 14.0, completed: false },
-    { id: 'ch2_relay_2', chapter: 2, label: 'Signal Relay B (Yard #07)', x: 12.2, z: -15.0, completed: false },
-    // Chapter 3: 2 Dark-Quarter Phase Stabilizers
-    { id: 'ch3_stab_1', chapter: 3, label: 'Phase Stabilizer #08 (Dark Yard)', x: -12.2, z: -16.0, completed: false },
-    { id: 'ch3_stab_2', chapter: 3, label: 'Phase Stabilizer #15 (East Garden)', x: 12.4, z: 30.0, completed: false },
-    // Chapter 4: 3 Outer Perimeter Phase Beacons
-    { id: 'ch4_beacon_1', chapter: 4, label: 'Perimeter Beacon North-W (Yard #04)', x: -12.2, z: -34.0, completed: false },
-    { id: 'ch4_beacon_2', chapter: 4, label: 'Perimeter Beacon North-E (Yard #03)', x: 12.2, z: -34.0, completed: false },
-    { id: 'ch4_beacon_3', chapter: 4, label: 'Highway Mirror Beacon (South Road)', x: 3.4, z: 39.2, completed: false },
-    // Chapter 5: 2 Transformer Square Ground Couplings
-    { id: 'ch5_core_1', chapter: 5, label: 'Substation Ground Coupling West', x: -7.8, z: -4.2, completed: false },
-    { id: 'ch5_core_2', chapter: 5, label: 'Substation Ground Coupling East', x: 7.4, z: 4.5, completed: false },
+    // Chapter 1: Shoot & shatter 2 corrupted Street Fuse Cores
+    { id: 'ch1_fuse_1', chapter: 1, label: 'Fuse Core #14 (West Yard)', x: -12.2, z: 29.0, completed: false, kind: 'destroy', maxHp: 160, hp: 160 },
+    { id: 'ch1_fuse_2', chapter: 1, label: 'Fuse Core #11 (East Porch)', x: 12.4, z: 14.0, completed: false, kind: 'destroy', maxHp: 160, hp: 160 },
+    // Chapter 2: Hold 2 Courtyard Signal Relay perimeters
+    { id: 'ch2_relay_1', chapter: 2, label: 'Signal Relay A (Yard #12)', x: -12.0, z: 14.0, completed: false, kind: 'hold', holdDuration: 5.5, holdProgress: 0 },
+    { id: 'ch2_relay_2', chapter: 2, label: 'Signal Relay B (Yard #07)', x: 12.2, z: -15.0, completed: false, kind: 'hold', holdDuration: 5.5, holdProgress: 0 },
+    // Chapter 3: EMP-overload 2 Dark-Quarter Phase Stabilizers
+    { id: 'ch3_stab_1', chapter: 3, label: 'Phase Stabilizer #08 (Dark Yard)', x: -12.2, z: -16.0, completed: false, kind: 'interact' },
+    { id: 'ch3_stab_2', chapter: 3, label: 'Phase Stabilizer #15 (East Garden)', x: 12.4, z: 30.0, completed: false, kind: 'interact' },
+    // Chapter 4: Shoot & shatter 3 Outer Perimeter Mirror Beacons
+    { id: 'ch4_beacon_1', chapter: 4, label: 'Perimeter Beacon North-W (Yard #04)', x: -12.2, z: -34.0, completed: false, kind: 'destroy', maxHp: 200, hp: 200 },
+    { id: 'ch4_beacon_2', chapter: 4, label: 'Perimeter Beacon North-E (Yard #03)', x: 12.2, z: -34.0, completed: false, kind: 'destroy', maxHp: 200, hp: 200 },
+    { id: 'ch4_beacon_3', chapter: 4, label: 'Highway Mirror Beacon (South Road)', x: 3.4, z: 39.2, completed: false, kind: 'destroy', maxHp: 200, hp: 200 },
+    // Chapter 5: Hold 2 Transformer Square Grounding Zones against the siege
+    { id: 'ch5_core_1', chapter: 5, label: 'Substation Ground Coupling West', x: -7.8, z: -4.2, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
+    { id: 'ch5_core_2', chapter: 5, label: 'Substation Ground Coupling East', x: 7.4, z: 4.5, completed: false, kind: 'hold', holdDuration: 6.0, holdProgress: 0 },
   ];
 
   // 6 Collectible Magnetic Cassette Tapes ("Кассеты Савельева") tucked across porches & landmarks
@@ -1485,4 +1487,188 @@ export function computeCoopSlotSpawnOffset(slotIndex: number): { dx: number; dz:
     dx: Number((side * 1.95).toFixed(2)),
     dz: Number((row * 1.55).toFixed(2)),
   };
+}
+
+export interface GraphicsProfileConfig {
+  quality: GraphicsQuality;
+  targetFps: number;
+  maxPixelRatio: number;
+  usePostProcessing: boolean;
+  msaaSamples: number;
+  moonShadowRes: number;
+  flashlightShadow: boolean;
+  lampShadowSpots: number;
+  rainScale: number;
+}
+
+/**
+ * Pure power & graphics quality profile resolver.
+ * Keeps mobile/laptop GPU load, memory bandwidth, and battery drain strictly bounded
+ * while letting desktop players opt into full shadows & MSAA.
+ */
+export function getGraphicsProfileConfig(
+  quality: GraphicsQuality,
+  isSoftwareGl: boolean
+): GraphicsProfileConfig {
+  if (isSoftwareGl) {
+    return {
+      quality,
+      targetFps: 20,
+      maxPixelRatio: 1,
+      usePostProcessing: false,
+      msaaSamples: 0,
+      moonShadowRes: 1024,
+      flashlightShadow: false,
+      lampShadowSpots: 0,
+      rainScale: 0.45,
+    };
+  }
+  if (quality === 'eco') {
+    return {
+      quality: 'eco',
+      targetFps: 36,
+      maxPixelRatio: 1.0,
+      usePostProcessing: false,
+      msaaSamples: 0,
+      moonShadowRes: 512,
+      flashlightShadow: false,
+      lampShadowSpots: 0,
+      rainScale: 0.45,
+    };
+  }
+  if (quality === 'high') {
+    return {
+      quality: 'high',
+      targetFps: 60,
+      maxPixelRatio: 1.75,
+      usePostProcessing: true,
+      msaaSamples: 4,
+      moonShadowRes: 2048,
+      flashlightShadow: true,
+      lampShadowSpots: 2,
+      rainScale: 1.0,
+    };
+  }
+  return {
+    quality: 'balanced',
+    targetFps: 60,
+    maxPixelRatio: 1.35,
+    usePostProcessing: true,
+    msaaSamples: 2,
+    moonShadowRes: 1024,
+    flashlightShadow: false,
+    lampShadowSpots: 1,
+    rainScale: 0.78,
+  };
+}
+
+export interface DestructibleObjectiveCandidate {
+  id: string;
+  x: number;
+  z: number;
+  radius: number;
+  hitHeight: number;
+  completed: boolean;
+}
+
+export interface ObjectiveShotHitResult {
+  objectiveId: string;
+  distance: number;
+  hitX: number;
+  hitY: number;
+  hitZ: number;
+}
+
+/**
+ * Pure 3D ray-vs-cylinder bullet hit registration for shoot-to-destroy ('destroy') objectives.
+ */
+export function findShotHitObjective(
+  rayOrigin: { x: number; y: number; z: number },
+  rayDir: { x: number; y: number; z: number },
+  maxRange: number,
+  candidates: ReadonlyArray<DestructibleObjectiveCandidate>
+): ObjectiveShotHitResult | null {
+  const horizLenSq = rayDir.x * rayDir.x + rayDir.z * rayDir.z;
+  let best: ObjectiveShotHitResult | null = null;
+  let bestDist = maxRange;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const o = candidates[i];
+    if (o.completed) continue;
+    const ox = o.x - rayOrigin.x;
+    const oz = o.z - rayOrigin.z;
+    const t =
+      horizLenSq > 1e-6
+        ? (ox * rayDir.x + oz * rayDir.z) / horizLenSq
+        : Math.hypot(ox, oz);
+    if (t < 0.25 || t > bestDist) continue;
+
+    const px = rayOrigin.x + rayDir.x * t;
+    const py = rayOrigin.y + rayDir.y * t;
+    const pz = rayOrigin.z + rayDir.z * t;
+
+    const horizDist = Math.hypot(px - o.x, pz - o.z);
+    if (horizDist <= o.radius && py >= 0.0 && py <= o.hitHeight) {
+      bestDist = t;
+      best = {
+        objectiveId: o.id,
+        distance: t,
+        hitX: px,
+        hitY: py,
+        hitZ: pz,
+      };
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Pure hold-the-zone objective progress stepper:
+ * Standing within the glowing perimeter radius charges progress smoothly to 100%;
+ * stepping outside decays slowly (25% speed) so dodging monsters remains fair.
+ */
+export function stepObjectiveHoldZone(
+  playerX: number,
+  playerZ: number,
+  objX: number,
+  objZ: number,
+  currentProgress: number,
+  durationSec: number,
+  dt: number,
+  zoneRadius = 4.8
+): { inZone: boolean; progress: number; ratio: number; completedNow: boolean } {
+  const safeDuration = Math.max(0.5, durationSec);
+  const safeDt = Math.max(0, Math.min(0.25, dt));
+  const dist = Math.hypot(playerX - objX, playerZ - objZ);
+  const inZone = dist <= zoneRadius;
+  let progress = Math.max(0, currentProgress);
+  if (inZone) {
+    progress = Math.min(safeDuration, progress + safeDt);
+  } else if (progress > 0) {
+    progress = Math.max(0, progress - safeDt * 0.25);
+  }
+  const ratio = Math.max(0, Math.min(1, progress / safeDuration));
+  return {
+    inZone,
+    progress,
+    ratio,
+    completedNow: inZone && progress >= safeDuration,
+  };
+}
+
+/**
+ * Returns true only for major campaign narrative milestones (Act Intros & Act Bosses)
+ * so mid-act chapters flow directly into action with non-blocking radio callouts
+ * instead of interrupting combat with repetitive click-through slides.
+ */
+export function shouldPlayBlockingCutsceneForChapter(chapterIndex: number): boolean {
+  return (
+    chapterIndex === 0 ||
+    chapterIndex === 5 ||
+    chapterIndex === 6 ||
+    chapterIndex === 11 ||
+    chapterIndex === 12 ||
+    chapterIndex === 17
+  );
 }

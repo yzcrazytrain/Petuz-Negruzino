@@ -80,6 +80,7 @@ if (inlinedScripts === 0) {
 }
 
 // 4. Write standalone offline HTML copy + Electron app.html
+fs.mkdirSync(ELECTRON_DIR, { recursive: true });
 const standaloneHtmlPath = path.join(DOWNLOADS_DIR, 'NEGRUZINO.html');
 const electronAppHtmlPath = path.join(ELECTRON_DIR, 'app.html');
 fs.writeFileSync(standaloneHtmlPath, html, 'utf8');

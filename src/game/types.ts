@@ -1,6 +1,13 @@
 export type Language = 'ru' | 'en';
 export type RoosterNameId = 'grisha' | 'vanya';
 export type DifficultyId = 'easy' | 'normal' | 'hard';
+export type GraphicsQuality = 'eco' | 'balanced' | 'high';
+export type NearbyInteractKind =
+  | 'objective'
+  | 'tape'
+  | 'revive'
+  | 'hub_car'
+  | 'hub_specs';
 
 export interface DifficultyPreset {
   id: DifficultyId;
@@ -218,6 +225,8 @@ export interface LampSpec {
   hasPointLight: boolean;
 }
 
+export type ObjectiveKind = 'interact' | 'destroy' | 'hold';
+
 export interface ObjectiveSpec {
   id: string;
   chapter: number;
@@ -225,6 +234,19 @@ export interface ObjectiveSpec {
   x: number;
   z: number;
   completed: boolean;
+  kind?: ObjectiveKind;
+  maxHp?: number;
+  hp?: number;
+  holdDuration?: number;
+  holdProgress?: number;
+}
+
+export interface ActiveObjectiveProgress {
+  kind: 'destroy' | 'hold';
+  label: string;
+  ratio: number; // 0..1
+  currentValue: number;
+  maxValue: number;
 }
 
 export interface TapeSpec {
@@ -415,6 +437,7 @@ export interface HudSnapshot {
   language: Language;
   roosterName: RoosterNameId;
   difficulty: DifficultyId;
+  graphicsQuality: GraphicsQuality;
   mouseSensitivity: number;
   keybinds: KeybindMap;
   isTouchDevice: boolean;
@@ -432,7 +455,9 @@ export interface HudSnapshot {
   objectivesDone: number;
   objectivesTotal: number;
   objectiveCompass: ObjectiveCompassState;
+  activeObjectiveProgress: ActiveObjectiveProgress | null;
   nearbyInteractLabel: string | null;
+  nearbyInteractKind: NearbyInteractKind | null;
   hp: number;
   maxHp: number;
   stamina: number;

@@ -496,7 +496,7 @@ export const CAMPAIGN_CHAPTERS: ChapterDef[] = [
 export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
   {
     title: 'Глава 7: Шоссе и КПП-3',
-    objectiveSummary: 'Запитайте шлагбаум КПП-3 и восточный генератор на въезде в Автопарк №4.',
+    objectiveSummary: 'Активируйте ЭМИ-рубильник КПП-3 и восточный генератор на въезде в Автопарк №4.',
     introCutscene: {
       id: 'ch7_intro',
       chapter: 7,
@@ -517,14 +517,14 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
         {
           speaker: 'ЗАДАЧА · ЭНЕРГИЯ КПП',
           timestamp: '01:08:35',
-          text: 'Запустите рубильник КПП-3 и восточный генератор [E], чтобы оживить прожекторы автопарка и открыть доступ к чёрному ящику автобуса.',
+          text: 'Запустите ЭМИ-рубильник КПП-3 и восточный генератор [E], чтобы оживить прожекторы автопарка и открыть доступ к чёрному ящику автобуса.',
         },
       ],
     },
   },
   {
     title: 'Глава 8: Призрак рейса №404',
-    objectiveSummary: 'Заберите чёрный ящик в кабине автобуса №404 и консоль западного ангара.',
+    objectiveSummary: 'Удерживайте зоны сканирования у автобуса №404 и западного ангара.',
     introCutscene: {
       id: 'ch8_intro',
       chapter: 8,
@@ -545,14 +545,14 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
         {
           speaker: 'ЗАДАЧА',
           timestamp: '01:17:38',
-          text: 'Снимите показания с кабины автобуса №404 и консоли западного ангара [E], отбиваясь от засады.',
+          text: 'Удерживайте зоны сканирования у автобуса №404 и западного ангара, отбиваясь от засады.',
         },
       ],
     },
   },
   {
     title: 'Глава 9: Топливные цистерны',
-    objectiveSummary: 'Перекройте 2 клапана топливных цистерн в северо-западном секторе.',
+    objectiveSummary: 'Расстреляйте 2 аномальных клапана топливных цистерн в северо-западном секторе.',
     introCutscene: {
       id: 'ch9_intro',
       chapter: 9,
@@ -575,7 +575,7 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
   },
   {
     title: 'Глава 10: Засада в ремонтных боксах',
-    objectiveSummary: 'Разомкните 3 силовые шины в восточном ангаре, на плацу и западной площадке.',
+    objectiveSummary: 'Расстреляйте 3 силовые шины в восточном ангаре, на плацу и западной площадке.',
     introCutscene: {
       id: 'ch10_intro',
       chapter: 10,
@@ -596,14 +596,14 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
         {
           speaker: 'ЗАДАЧА',
           timestamp: '01:39:33',
-          text: 'Отключите 3 силовые точки [E]: в восточном ангаре, на центральном плацу и на западной площадке прожекторов.',
+          text: 'Расстреляйте 3 силовые шины: в восточном ангаре, на центральном плацу и на западной площадке прожекторов.',
         },
       ],
     },
   },
   {
     title: 'Глава 11: Диспетчерская вышка',
-    objectiveSummary: 'Наведите антенну диспетчерской вышки и откройте замок северного тоннеля.',
+    objectiveSummary: 'Удерживайте зоны у диспетчерской вышки и северного тоннеля под штурмом.',
     introCutscene: {
       id: 'ch11_intro',
       chapter: 11,
@@ -649,7 +649,7 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
   },
   {
     title: 'Глава 13: Ворота «Луча-94»',
-    objectiveSummary: 'Отключите клапаны юго-западного и юго-восточного пилонов охлаждения.',
+    objectiveSummary: 'Расстреляйте аномальные клапаны юго-западного и юго-восточного пилонов.',
     introCutscene: {
       id: 'ch13_intro',
       chapter: 13,
@@ -665,19 +665,19 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
         {
           speaker: 'ОТКРОВЕНИЕ · ГОЛОС ДЕДА',
           timestamp: '02:06:19',
-          text: '«Внук... я пытался выключить его ещё в девяносто пятом, но машина научилась питаться тревогой каждого, кто помнит ту ночь. Сначала остуди пилоны, иначе к ядру не подойти!»',
+          text: '«Внук... я пытался выключить его ещё в девяносто пятом, но машина научилась питаться тревогой каждого, кто помнит ту ночь. Сначала разбей пилоны, иначе к ядру не подойти!»',
         },
         {
           speaker: 'ЗАДАЧА',
           timestamp: '02:06:34',
-          text: 'Отключите оба южных пилона охлаждения [E] по бокам двора подстанции.',
+          text: 'Расстреляйте оба южных пилона охлаждения по бокам двора подстанции.',
         },
       ],
     },
   },
   {
     title: 'Глава 14: Гроза конденсаторов',
-    objectiveSummary: 'Разрядите западный и восточный залы высоковольтных конденсаторов.',
+    objectiveSummary: 'Удерживайте зоны разрядки у западного и восточного залов конденсаторов.',
     introCutscene: {
       id: 'ch14_intro',
       chapter: 14,
@@ -728,7 +728,7 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
   },
   {
     title: 'Глава 16: Зеркальный коридор',
-    objectiveSummary: 'Вырубите северные пилоны С-З, С-В и шунт у южного КПП подстанции.',
+    objectiveSummary: 'Расстреляйте 3 узла сдерживания у северных пилонов и южного КПП подстанции.',
     introCutscene: {
       id: 'ch16_intro',
       chapter: 16,
@@ -744,14 +744,14 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
         {
           speaker: 'ЗАДАЧА',
           timestamp: '02:41:23',
-          text: 'Отключите 3 последних узла сдерживания [E]: северные пилоны С-З и С-В и шунт у главных ворот.',
+          text: 'Расстреляйте 3 последних узла сдерживания: северные пилоны С-З и С-В и шунт у главных ворот.',
         },
       ],
     },
   },
   {
     title: 'Глава 17: Перегрузка Ядра',
-    objectiveSummary: 'Сорвите оба ограничителя прямо у Ядра Резонатора и выдержите финальную волну.',
+    objectiveSummary: 'Удерживайте 2 зоны перегрузки прямо у Ядра Резонатора под финальной волной.',
     introCutscene: {
       id: 'ch17_intro',
       chapter: 17,
@@ -800,7 +800,7 @@ export const EXTRA_CHAPTER_META_RU: ChapterLocaleMeta[] = [
 export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
   {
     title: 'Chapter 7: Highway Checkpoint-3',
-    objectiveSummary: 'Power the KPP-3 barrier breaker and east generator at Bus Depot #4.',
+    objectiveSummary: 'Trigger the EMP KPP-3 barrier breaker and east generator at Bus Depot #4.',
     introCutscene: {
       id: 'ch7_intro',
       chapter: 7,
@@ -821,14 +821,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'OBJECTIVE',
           timestamp: '01:08:35',
-          text: 'Restore the KPP-3 barrier breaker and the east generator shed [E] to light the depot tarmac.',
+          text: 'Trigger the KPP-3 EMP breaker and the east generator shed [E] to light the depot tarmac.',
         },
       ],
     },
   },
   {
     title: 'Chapter 8: Ghost of Bus #404',
-    objectiveSummary: 'Recover Bus #404 black box and the West Hangar inspection console.',
+    objectiveSummary: 'Hold the scan zones beside Bus #404 and the West Hangar.',
     introCutscene: {
       id: 'ch8_intro',
       chapter: 8,
@@ -844,14 +844,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'OBJECTIVE',
           timestamp: '01:17:26',
-          text: 'Pull the Bus #404 recorder and the West Hangar telemetry console [E] while holding back the ambush.',
+          text: 'Hold both telemetry scan zones beside Bus #404 and the West Hangar while fighting off the ambush.',
         },
       ],
     },
   },
   {
     title: 'Chapter 9: Fuel Cistern Blackout',
-    objectiveSummary: 'Shut off 2 fuel cistern valves in the northwest tank farm.',
+    objectiveSummary: 'Shoot & shatter 2 anomaly fuel cistern valves in the northwest tank farm.',
     introCutscene: {
       id: 'ch9_intro',
       chapter: 9,
@@ -867,14 +867,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'OBJECTIVE',
           timestamp: '01:28:22',
-          text: 'Fight into the northwest tank farm and close both Cistern Valves Alpha and Beta [E].',
+          text: 'Fight into the northwest tank farm and shoot both Cistern Valve Cores Alpha and Beta.',
         },
       ],
     },
   },
   {
     title: 'Chapter 10: Inspection Bay Ambush',
-    objectiveSummary: 'Sever 3 depot busbars across the East Hangar, tarmac, and west yard.',
+    objectiveSummary: 'Shoot & shatter 3 depot busbar cores across the East Hangar, tarmac, and west yard.',
     introCutscene: {
       id: 'ch10_intro',
       chapter: 10,
@@ -890,14 +890,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'OBJECTIVE',
           timestamp: '01:39:22',
-          text: 'Cut 3 power links [E] across the East Hangar, central tarmac, and west floodlight yard.',
+          text: 'Destroy 3 power busbar cores across the East Hangar, central tarmac, and west floodlight yard.',
         },
       ],
     },
   },
   {
     title: 'Chapter 11: Dispatch Tower Signal',
-    objectiveSummary: 'Align the Dispatch Tower dish and unlock the North Tunnel Gate.',
+    objectiveSummary: 'Hold the uplink zones at the Dispatch Tower and North Tunnel Gate.',
     introCutscene: {
       id: 'ch11_intro',
       chapter: 11,
@@ -938,7 +938,7 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
   },
   {
     title: 'Chapter 13: Gates of Luch-94',
-    objectiveSummary: 'Shut down the SW and SE Cooling Pylon valves around the core.',
+    objectiveSummary: 'Shoot & shatter the SW and SE Cooling Pylon cores around the Resonator.',
     introCutscene: {
       id: 'ch13_intro',
       chapter: 13,
@@ -954,14 +954,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'MIKHAIL SAVELIEV · TRANSMISSION',
           timestamp: '02:06:20',
-          text: '"I tried to shut it down in 1995, grandson, but it feeds on every soul afraid of tomorrow. Cut the cooling pylons first!"',
+          text: '"I tried to shut it down in 1995, grandson, but it feeds on every soul afraid of tomorrow. Shatter the cooling pylon cores first!"',
         },
       ],
     },
   },
   {
     title: 'Chapter 14: Capacitor Storm',
-    objectiveSummary: 'Discharge both West and East High-Voltage Capacitor Banks.',
+    objectiveSummary: 'Hold the discharge zones beside both High-Voltage Capacitor Banks.',
     introCutscene: {
       id: 'ch14_intro',
       chapter: 14,
@@ -972,14 +972,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'LUCH-94 TELEMETRY · 02:18',
           timestamp: '02:18:07',
-          text: 'Two massive capacitor halls still pump megawatts into the Core. Drain both banks [E] before the storm seals the yard.',
+          text: 'Two massive capacitor halls still pump megawatts into the Core. Hold both discharge zones before the storm seals the yard.',
         },
       ],
     },
   },
   {
     title: 'Chapter 15: The Archive Bunker',
-    objectiveSummary: 'Unlock the Archive Bunker cipher and retrieve Mikhail’s master tape.',
+    objectiveSummary: 'Trigger the Archive Bunker EMP cipher and retrieve Mikhail’s master tape.',
     introCutscene: {
       id: 'ch15_intro',
       chapter: 15,
@@ -1002,7 +1002,7 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
   },
   {
     title: 'Chapter 16: Mirror Corridor',
-    objectiveSummary: 'Trip the NW & NE Pylon breakers and the South Gatehouse shunt.',
+    objectiveSummary: 'Shoot & destroy the NW & NE Pylon cores and the South Gatehouse shunt.',
     introCutscene: {
       id: 'ch16_intro',
       chapter: 16,
@@ -1013,14 +1013,14 @@ export const EXTRA_CHAPTER_META_EN: ChapterLocaleMeta[] = [
         {
           speaker: 'CONTAINMENT BREACH · 02:41',
           timestamp: '02:41:08',
-          text: 'The Resonator lashes back! Trip both northern pylons and the gatehouse grounding shunt [E] to strip its shield.',
+          text: 'The Resonator lashes back! Shatter both northern pylon cores and the gatehouse grounding shunt to strip its shield.',
         },
       ],
     },
   },
   {
     title: 'Chapter 17: Core Overload',
-    objectiveSummary: 'Pull both Resonator Core limiters and survive the final swarm.',
+    objectiveSummary: 'Hold both overload zones right beside the Resonator Core under final siege.',
     introCutscene: {
       id: 'ch17_intro',
       chapter: 17,

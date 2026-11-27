@@ -20,11 +20,15 @@ import {
   evaluateCutsceneSkipVote,
   evaluateHubBoarding,
   findShotHitEnemy,
+  findShotHitObjective,
+  getGraphicsProfileConfig,
   keepRoosterOutOfLineOfFire,
   pickUpgradeChoices,
   resolveCircleVsAABBs,
   resolveCircleVsCircles,
   shouldAutoReload,
+  shouldPlayBlockingCutsceneForChapter,
+  stepObjectiveHoldZone,
   stepRoosterCompanion,
 } from './rules';
 import { UPGRADE_IDS, WEAPONS } from './constants';
@@ -1035,4 +1039,109 @@ test('co-op 4-player slot spawn offsets are distinct and collision-free in Hub, 
     }
   }
 });
+
+test('graphics & power profiles strictly bound eco battery drain, balanced defaults, high fidelity, and software GL fallback', () => {
+  const eco = getGraphicsProfileConfig('eco', false);
+  const balanced = getGraphicsProfileConfig('balanced', false);
+  const high = getGraphicsProfileConfig('high', false);
+  const sw = getGraphicsProfileConfig('high', true);
+
+  // Eco disables post-processing, shadows on flashlight/lamps, caps DPR & FPS
+  assert.equal(eco.usePostProcessing, false);
+  assert.equal(eco.msaaSamples, 0);
+  assert.equal(eco.flashlightShadow, false);
+  assert.equal(eco.lampShadowSpots, 0);
+  assert.ok(eco.targetFps <= 40);
+  assert.ok(eco.maxPixelRatio <= 1.0);
+  assert.ok(eco.moonShadowRes <= 512);
+
+  // Balanced enables post-processing with 2x MSAA and bounded DPR/shadows
+  assert.equal(balanced.usePostProcessing, true);
+  assert.equal(balanced.msaaSamples, 2);
+  assert.equal(balanced.lampShadowSpots, 1);
+  assert.ok(balanced.moonShadowRes === 1024);
+  assert.ok(balanced.maxPixelRatio > eco.maxPixelRatio && balanced.maxPixelRatio < high.maxPixelRatio);
+
+  // High unlocks full 2048 shadows, 4x MSAA, flashlight shadow, and 2 lamp spots
+  assert.equal(high.usePostProcessing, true);
+  assert.equal(high.msaaSamples, 4);
+  assert.equal(high.moonShadowRes, 2048);
+  assert.equal(high.flashlightShadow, true);
+  assert.equal(high.lampShadowSpots, 2);
+  assert.equal(high.rainScale, 1.0);
+
+  // Software GL always falls back cleanly regardless of requested preset
+  assert.equal(sw.usePostProcessing, false);
+  assert.equal(sw.msaaSamples, 0);
+  assert.equal(sw.maxPixelRatio, 1);
+  assert.equal(sw.flashlightShadow, false);
+  assert.equal(sw.lampShadowSpots, 0);
+});
+
+test('varied FPS mission mechanics: shootable anomaly cores, hold-zone capture, and streamlined mid-act cutscenes', async () => {
+  const { buildZoneLayout } = await import('./zones');
+
+  // 1. Shootable Anomaly Core ray-vs-cylinder hit registration
+  const candidates = [
+    { id: 'core_far', x: 0, z: -20, radius: 1.0, hitHeight: 2.8, completed: false },
+    { id: 'core_near', x: 0, z: -10, radius: 1.0, hitHeight: 2.8, completed: false },
+    { id: 'core_done', x: 0, z: -5, radius: 1.0, hitHeight: 2.8, completed: true },
+  ];
+  const hit = findShotHitObjective(
+    { x: 0, y: 1.65, z: 0 },
+    { x: 0, y: 0, z: -1 },
+    40,
+    candidates
+  );
+  assert.ok(hit, 'expected shot to hit active destructible core');
+  assert.equal(hit.objectiveId, 'core_near');
+  assert.ok(hit.distance > 8.5 && hit.distance < 10.2);
+
+  // Off-target shot misses cleanly
+  const miss = findShotHitObjective(
+    { x: 0, y: 1.65, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    40,
+    candidates
+  );
+  assert.equal(miss, null);
+
+  // 2. Tactical Hold-Zone capture charges inside 4.8m (clamped to <=0.25s/tick), decays gently outside, completes at 100%
+  const inStep = stepObjectiveHoldZone(2.0, 2.0, 0, 0, 0, 5.0, 0.2, 4.8);
+  assert.equal(inStep.inZone, true);
+  assert.ok(Math.abs(inStep.progress - 0.2) < 1e-6);
+  assert.ok(Math.abs(inStep.ratio - 0.04) < 1e-6);
+  assert.equal(inStep.completedNow, false);
+
+  const outStep = stepObjectiveHoldZone(9.0, 0, 0, 0, 2.5, 5.0, 0.2, 4.8);
+  assert.equal(outStep.inZone, false);
+  assert.ok(Math.abs(outStep.progress - 2.45) < 1e-6);
+  assert.equal(outStep.completedNow, false);
+
+  const finishStep = stepObjectiveHoldZone(0.5, -0.5, 0, 0, 4.85, 5.0, 0.2, 4.8);
+  assert.equal(finishStep.inZone, true);
+  assert.equal(finishStep.ratio, 1);
+  assert.equal(finishStep.completedNow, true);
+
+  // 3. Blocking full-screen cutscenes play ONLY for Act intros & Act bosses (indices 0, 5, 6, 11, 12, 17)
+  const expectedCutscenes = new Set([0, 5, 6, 11, 12, 17]);
+  for (let i = 0; i < 18; i++) {
+    assert.equal(
+      shouldPlayBlockingCutsceneForChapter(i),
+      expectedCutscenes.has(i),
+      `chapter index ${i} blocking cutscene mismatch`
+    );
+  }
+
+  // 4. All 3 campaign zones feature all three objective kinds (destroy, hold, interact)
+  for (const zoneId of ['suburb', 'depot', 'substation'] as const) {
+    const layout = buildZoneLayout(zoneId);
+    const kinds = new Set(layout.objectives.map((o) => o.kind ?? 'interact'));
+    assert.ok(kinds.has('destroy'), `${zoneId} missing destroy objective`);
+    assert.ok(kinds.has('hold'), `${zoneId} missing hold objective`);
+    assert.ok(kinds.has('interact'), `${zoneId} missing interact objective`);
+  }
+});
+
+
 

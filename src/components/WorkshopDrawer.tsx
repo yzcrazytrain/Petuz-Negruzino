@@ -35,6 +35,7 @@ import type {
   CutsceneDef,
   CustomTextureSpec,
   DifficultyId,
+  GraphicsQuality,
   KeybindMap,
   Language,
   MusicSettings,
@@ -50,6 +51,7 @@ interface WorkshopDrawerProps {
   language: Language;
   roosterName: RoosterNameId;
   difficulty: DifficultyId;
+  graphicsQuality: GraphicsQuality;
   mouseSensitivity: number;
   keybinds: KeybindMap;
   initialTab?: WorkshopTabId;
@@ -61,6 +63,7 @@ interface WorkshopDrawerProps {
   onChangeLanguage: (lang: Language) => void;
   onChangeRoosterName: (name: RoosterNameId) => void;
   onChangeDifficulty: (difficulty: DifficultyId) => void;
+  onChangeGraphicsQuality: (quality: GraphicsQuality) => void;
   onChangeSensitivity: (sensitivity: number) => void;
   onRebindAction: (action: BindableAction, code: string) => void;
   onResetKeybinds: () => void;
@@ -93,6 +96,7 @@ export function WorkshopDrawer({
   language,
   roosterName,
   difficulty,
+  graphicsQuality,
   mouseSensitivity,
   keybinds,
   initialTab = 'music',
@@ -104,6 +108,7 @@ export function WorkshopDrawer({
   onChangeLanguage,
   onChangeRoosterName,
   onChangeDifficulty,
+  onChangeGraphicsQuality,
   onChangeSensitivity,
   onRebindAction,
   onResetKeybinds,
@@ -838,6 +843,37 @@ export function WorkshopDrawer({
                         }`}
                       >
                         {t.difficulties[diffId].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Graphics & Energy-Saving Selector (Eco / Balanced / High) */}
+                <div className="pt-3 border-t border-[#ece7dc]/10 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-mono-num uppercase tracking-wider text-[#ece7dc] font-semibold">
+                      {t.graphicsQualityLabel}
+                    </div>
+                    <p className="text-xs text-[#9aa3b0] mt-0.5">
+                      {t.graphicsModes[graphicsQuality].hint}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-[#0b1019] p-1 rounded border border-[#ece7dc]/12 shrink-0">
+                    {(['eco', 'balanced', 'high'] as GraphicsQuality[]).map((q) => (
+                      <button
+                        key={q}
+                        type="button"
+                        data-studio-graphics={q}
+                        onClick={() => onChangeGraphicsQuality(q)}
+                        className={`px-2.5 py-1.5 text-xs font-mono-num uppercase rounded transition-colors cursor-pointer ${
+                          graphicsQuality === q
+                            ? q === 'eco'
+                              ? 'bg-[#5fa88e] text-[#0b0f17] font-bold'
+                              : 'bg-[#e8963a] text-[#0b0f17] font-bold'
+                            : 'text-[#9aa3b0] hover:text-[#ece7dc]'
+                        }`}
+                      >
+                        {t.graphicsModes[q].label}
                       </button>
                     ))}
                   </div>

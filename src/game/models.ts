@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { EnemyKind, HouseLot, LampSpec, PickupKind, WeaponId } from './types';
+import type { EnemyKind, HouseLot, LampSpec, ObjectiveKind, PickupKind, WeaponId } from './types';
 import {
   createEnemySurfaceMaps,
   createFirstPersonHandMaterials,
@@ -1404,25 +1404,30 @@ export function createTransformerTower(materials: WorldMaterialSet): THREE.Group
 
 export function createObjectiveShrine(
   labelColor: number,
-  materials: WorldMaterialSet
+  materials: WorldMaterialSet,
+  kind: ObjectiveKind = 'interact'
 ): {
   group: THREE.Group;
   beaconMat: THREE.MeshStandardMaterial;
   ringMesh: THREE.Mesh;
   beamMesh: THREE.Mesh;
+  corePivot?: THREE.Group;
+  zoneFillMat?: THREE.MeshBasicMaterial;
 } {
   const group = new THREE.Group();
+  const accentHex =
+    kind === 'destroy' ? 0xf25c3b : kind === 'hold' ? 0x3fd4c6 : labelColor;
 
   // Cast-iron bolted pedestal base + tapered fluted column
   const plinth = new THREE.Mesh(
     createLatheProfileGeo(
       [
-        [0.34, 0.0],
-        [0.32, 0.12],
+        [0.36, 0.0],
+        [0.34, 0.12],
         [0.24, 0.18],
         [0.14, 0.28],
         [0.12, 1.05],
-        [0.2, 1.14],
+        [0.22, 1.14],
       ],
       14
     ),
@@ -1432,170 +1437,224 @@ export function createObjectiveShrine(
   plinth.receiveShadow = true;
   group.add(plinth);
 
-  // Beveled industrial Soviet electrical enclosure with recessed door rim & latch handle
-  const cabinet = new THREE.Mesh(
-    createBeveledBoxGeo(0.8, 0.96, 0.48, 0.08, 0.04),
-    materials.grimeMetal
-  );
-  cabinet.position.y = 1.54;
-  cabinet.castShadow = true;
-  cabinet.receiveShadow = true;
-  group.add(cabinet);
-
-  const doorTrim = new THREE.Mesh(
-    createBeveledBoxGeo(0.68, 0.82, 0.06, 0.04, 0.015),
-    materials.concrete
-  );
-  doorTrim.position.set(0, 1.54, 0.24);
-  group.add(doorTrim);
-
-  // Analog Soviet voltmeter dial mounted on front cabinet panel
-  const gaugeCanvas = document.createElement('canvas');
-  gaugeCanvas.width = 128;
-  gaugeCanvas.height = 128;
-  const gctx = gaugeCanvas.getContext('2d')!;
-  gctx.fillStyle = '#e7dfcd';
-  gctx.beginPath();
-  gctx.arc(64, 64, 58, 0, Math.PI * 2);
-  gctx.fill();
-  gctx.strokeStyle = '#1d222b';
-  gctx.lineWidth = 6;
-  gctx.stroke();
-  gctx.strokeStyle = '#c93b3b';
-  gctx.lineWidth = 4;
-  gctx.beginPath();
-  gctx.arc(64, 64, 42, Math.PI * 1.15, Math.PI * 1.85);
-  gctx.stroke();
-  gctx.strokeStyle = '#11151d';
-  gctx.lineWidth = 4;
-  gctx.beginPath();
-  gctx.moveTo(64, 72);
-  gctx.lineTo(94, 34);
-  gctx.stroke();
-  const gaugeTex = new THREE.CanvasTexture(gaugeCanvas);
-  gaugeTex.colorSpace = THREE.SRGBColorSpace;
-  const gauge = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.125, 0.125, 0.035, 16),
-    [
-      materials.grimeMetal,
-      new THREE.MeshStandardMaterial({ map: gaugeTex, roughness: 0.35, metalness: 0.1 }),
-      materials.grimeMetal,
-    ]
-  );
-  gauge.rotation.x = Math.PI / 2;
-  gauge.position.set(0, 1.72, 0.275);
-  group.add(gauge);
-
-  // Coiled armored power conduits curving from sides of cabinet into the damp earth
-  for (const side of [-1, 1]) {
-    const conduitCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(side * 0.38, 1.38, -0.02),
-      new THREE.Vector3(side * 0.56, 1.16, 0.04),
-      new THREE.Vector3(side * 0.48, 0.62, -0.04),
-      new THREE.Vector3(side * 0.24, 0.08, 0),
-    ]);
-    const conduit = new THREE.Mesh(
-      new THREE.TubeGeometry(conduitCurve, 14, 0.032, 8, false),
-      materials.grimeMetal
-    );
-    conduit.castShadow = true;
-    group.add(conduit);
-
-    // Ribbed porcelain high-voltage insulator flanking top beacon
-    const insulator = new THREE.Mesh(
-      createLatheProfileGeo(
-        [
-          [0.055, 0],
-          [0.068, 0.05],
-          [0.045, 0.09],
-          [0.066, 0.14],
-          [0.042, 0.18],
-          [0.052, 0.23],
-          [0.015, 0.27],
-        ],
-        10
-      ),
-      materials.frostedGlass
-    );
-    insulator.position.set(side * 0.27, 2.02, 0);
-    group.add(insulator);
-  }
-
-  // Sculpted Fresnel strobe dome & protective wire guard ring
   const beaconMat = new THREE.MeshStandardMaterial({
-    color: labelColor,
+    color: accentHex,
     map: materials.frostedGlass.map,
     normalMap: materials.frostedGlass.normalMap,
-    emissive: labelColor,
-    emissiveIntensity: 1.7,
+    emissive: accentHex,
+    emissiveIntensity: kind === 'destroy' ? 1.85 : 1.5,
     roughness: 0.18,
     metalness: 0.15,
   });
-  const beaconCollar = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.19, 0.09, 14),
-    materials.grimeMetal
-  );
-  beaconCollar.position.y = 2.05;
-  const lamp = new THREE.Mesh(
-    createLatheProfileGeo(
-      [
-        [0.135, 0],
-        [0.14, 0.14],
-        [0.125, 0.24],
-        [0.08, 0.3],
-        [0.005, 0.32],
-      ],
-      14
-    ),
-    beaconMat
-  );
-  lamp.position.y = 2.09;
-  const guardRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.165, 0.014, 6, 16),
-    materials.grimeMetal
-  );
-  guardRing.rotation.x = Math.PI / 2;
-  guardRing.position.y = 2.24;
-  group.add(beaconCollar, lamp, guardRing);
 
-  // Subtle parabolic radio dish / dipole mast for chapter 2 relays (greenish beacon)
-  if (labelColor === 0x5fa88e) {
-    const dishMast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.025, 0.032, 0.72, 8),
+  let corePivot: THREE.Group | undefined;
+  let zoneFillMat: THREE.MeshBasicMaterial | undefined;
+
+  if (kind === 'destroy') {
+    // Shoot-to-destroy Anomaly Core Cage: floating glowing crystal core + angled steel ribs
+    const cradle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.42, 0.34, 0.24, 12),
       materials.grimeMetal
     );
-    dishMast.position.set(0, 2.38, -0.18);
-    const dish = new THREE.Mesh(
-      new THREE.SphereGeometry(0.38, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.38),
+    cradle.position.y = 1.22;
+    group.add(cradle);
+
+    corePivot = new THREE.Group();
+    corePivot.position.y = 1.92;
+    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.48, 1), beaconMat);
+    crystal.castShadow = true;
+    corePivot.add(crystal);
+
+    for (let i = 0; i < 3; i++) {
+      const cageRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.66, 0.036, 8, 22),
+        materials.grimeMetal
+      );
+      cageRing.rotation.set(i * 1.05, i * 0.85, i * 0.6);
+      corePivot.add(cageRing);
+    }
+    group.add(corePivot);
+
+    // 4 flanking armored fins framing the destructible core
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.05, 0.22), materials.grimeMetal);
+      fin.position.set(Math.cos(a) * 0.52, 1.75, Math.sin(a) * 0.52);
+      fin.rotation.y = -a;
+      group.add(fin);
+    }
+  } else {
+    // Beveled industrial Soviet electrical enclosure with recessed door rim & latch handle
+    const cabinet = new THREE.Mesh(
+      createBeveledBoxGeo(0.8, 0.96, 0.48, 0.08, 0.04),
       materials.grimeMetal
     );
-    dish.rotation.x = Math.PI * 0.68;
-    dish.position.set(0, 2.68, -0.14);
-    const feedHorn = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.018, 0.24, 8),
+    cabinet.position.y = 1.54;
+    cabinet.castShadow = true;
+    cabinet.receiveShadow = true;
+    group.add(cabinet);
+
+    const doorTrim = new THREE.Mesh(
+      createBeveledBoxGeo(0.68, 0.82, 0.06, 0.04, 0.015),
+      materials.concrete
+    );
+    doorTrim.position.set(0, 1.54, 0.24);
+    group.add(doorTrim);
+
+    // Analog Soviet voltmeter dial mounted on front cabinet panel
+    const gaugeCanvas = document.createElement('canvas');
+    gaugeCanvas.width = 128;
+    gaugeCanvas.height = 128;
+    const gctx = gaugeCanvas.getContext('2d')!;
+    gctx.fillStyle = '#e7dfcd';
+    gctx.beginPath();
+    gctx.arc(64, 64, 58, 0, Math.PI * 2);
+    gctx.fill();
+    gctx.strokeStyle = '#1d222b';
+    gctx.lineWidth = 6;
+    gctx.stroke();
+    gctx.strokeStyle = '#c93b3b';
+    gctx.lineWidth = 4;
+    gctx.beginPath();
+    gctx.arc(64, 64, 42, Math.PI * 1.15, Math.PI * 1.85);
+    gctx.stroke();
+    gctx.strokeStyle = '#11151d';
+    gctx.lineWidth = 4;
+    gctx.beginPath();
+    gctx.moveTo(64, 72);
+    gctx.lineTo(94, 34);
+    gctx.stroke();
+    const gaugeTex = new THREE.CanvasTexture(gaugeCanvas);
+    gaugeTex.colorSpace = THREE.SRGBColorSpace;
+    const gauge = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.125, 0.125, 0.035, 16),
+      [
+        materials.grimeMetal,
+        new THREE.MeshStandardMaterial({ map: gaugeTex, roughness: 0.35, metalness: 0.1 }),
+        materials.grimeMetal,
+      ]
+    );
+    gauge.rotation.x = Math.PI / 2;
+    gauge.position.set(0, 1.72, 0.275);
+    group.add(gauge);
+
+    for (const side of [-1, 1]) {
+      const conduitCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.38, 1.38, -0.02),
+        new THREE.Vector3(side * 0.56, 1.16, 0.04),
+        new THREE.Vector3(side * 0.48, 0.62, -0.04),
+        new THREE.Vector3(side * 0.24, 0.08, 0),
+      ]);
+      const conduit = new THREE.Mesh(
+        new THREE.TubeGeometry(conduitCurve, 14, 0.032, 8, false),
+        materials.grimeMetal
+      );
+      conduit.castShadow = true;
+      group.add(conduit);
+
+      const insulator = new THREE.Mesh(
+        createLatheProfileGeo(
+          [
+            [0.055, 0],
+            [0.068, 0.05],
+            [0.045, 0.09],
+            [0.066, 0.14],
+            [0.042, 0.18],
+            [0.052, 0.23],
+            [0.015, 0.27],
+          ],
+          10
+        ),
+        materials.frostedGlass
+      );
+      insulator.position.set(side * 0.27, 2.02, 0);
+      group.add(insulator);
+    }
+
+    const beaconCollar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.19, 0.09, 14),
+      materials.grimeMetal
+    );
+    beaconCollar.position.y = 2.05;
+    const lamp = new THREE.Mesh(
+      createLatheProfileGeo(
+        [
+          [0.135, 0],
+          [0.14, 0.14],
+          [0.125, 0.24],
+          [0.08, 0.3],
+          [0.005, 0.32],
+        ],
+        14
+      ),
       beaconMat
     );
-    feedHorn.rotation.x = -0.35;
-    feedHorn.position.set(0, 2.66, 0.05);
-    group.add(dishMast, dish, feedHorn);
+    lamp.position.y = 2.09;
+    const guardRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.165, 0.014, 6, 16),
+      materials.grimeMetal
+    );
+    guardRing.rotation.x = Math.PI / 2;
+    guardRing.position.y = 2.24;
+    group.add(beaconCollar, lamp, guardRing);
+
+    // Tall parabolic radio dish & telemetry mast for Hold-the-Zone uplinks
+    if (kind === 'hold') {
+      const dishMast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.042, 1.05, 8),
+        materials.grimeMetal
+      );
+      dishMast.position.set(0, 2.55, -0.16);
+      const dish = new THREE.Mesh(
+        new THREE.SphereGeometry(0.46, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.4),
+        materials.grimeMetal
+      );
+      dish.rotation.x = Math.PI * 0.65;
+      dish.position.set(0, 2.95, -0.12);
+      const feedHorn = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.02, 0.28, 8),
+        beaconMat
+      );
+      feedHorn.rotation.x = -0.35;
+      feedHorn.position.set(0, 2.92, 0.08);
+      group.add(dishMast, dish, feedHorn);
+
+      // Translucent ground capture zone fill disc showing exact 4.8m hold radius
+      zoneFillMat = new THREE.MeshBasicMaterial({
+        color: accentHex,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const zoneDisc = new THREE.Mesh(new THREE.CircleGeometry(4.55, 40), zoneFillMat);
+      zoneDisc.rotation.x = -Math.PI / 2;
+      zoneDisc.position.y = 0.038;
+      group.add(zoneDisc);
+    }
   }
 
   const ringMat = new THREE.MeshBasicMaterial({
-    color: labelColor,
+    color: accentHex,
     transparent: true,
-    opacity: 0.58,
+    opacity: kind === 'hold' ? 0.72 : 0.58,
     side: THREE.DoubleSide,
     depthWrite: false,
   });
-  const ringMesh = new THREE.Mesh(new THREE.RingGeometry(0.88, 1.12, 28), ringMat);
+  const ringMesh = new THREE.Mesh(
+    kind === 'hold'
+      ? new THREE.RingGeometry(4.45, 4.78, 48)
+      : new THREE.RingGeometry(0.95, 1.22, 28),
+    ringMat
+  );
   ringMesh.rotation.x = -Math.PI / 2;
-  ringMesh.position.y = 0.045;
+  ringMesh.position.y = 0.046;
   group.add(ringMesh);
 
   // Tall soft Fresnel vertical beacon beam so players can spot active objectives above fences
   const beamMat = new THREE.ShaderMaterial({
     uniforms: {
-      uColor: { value: new THREE.Color(labelColor) },
+      uColor: { value: new THREE.Color(accentHex) },
       uOpacity: { value: 0.28 },
     },
     vertexShader: /* glsl */ `
@@ -1634,7 +1693,7 @@ export function createObjectiveShrine(
   beamMesh.position.y = 8.4;
   group.add(beamMesh);
 
-  return { group, beaconMat, ringMesh, beamMesh };
+  return { group, beaconMat, ringMesh, beamMesh, corePivot, zoneFillMat };
 }
 
 /**
@@ -2306,8 +2365,8 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
   const tritiumGreen = new THREE.MeshStandardMaterial({
     color: 0x52ff9a,
     emissive: 0x26e678,
-    emissiveIntensity: 1.45,
-    roughness: 0.18,
+    emissiveIntensity: 1.05,
+    roughness: 0.2,
   });
 
   const muzzlePoint = new THREE.Object3D();
@@ -2803,7 +2862,7 @@ export function createWeaponViewmodel(weaponId: WeaponId): WeaponRig {
     housing.position.set(0, -0.06, -0.12);
 
     // Glowing green motor-drive status LED on rear housing
-    const motorLed = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 8), tritiumGreen);
+    const motorLed = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 8, 8), tritiumGreen);
     motorLed.position.set(0.065, 0.008, 0.05);
     group.add(motorLed);
 

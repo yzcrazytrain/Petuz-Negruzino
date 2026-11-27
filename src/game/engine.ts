@@ -15,11 +15,13 @@ import {
 } from './constants';
 import {
   loadInitialDifficulty,
+  loadInitialGraphicsQuality,
   loadInitialLanguage,
   loadInitialRoosterName,
   loadInitialSensitivity,
   localizeRoosterCopy,
   saveDifficulty,
+  saveGraphicsQuality,
   saveLanguage,
   saveRoosterName,
   saveSensitivity,
@@ -82,11 +84,16 @@ import {
   computeWeaponDamage,
   createInitialAmmo,
   findShotHitEnemy,
+  findShotHitObjective,
+  getGraphicsProfileConfig,
   pickUpgradeChoices,
   resolveCircleVsAABBs,
   resolveCircleVsCircles,
   shouldAutoReload,
+  shouldPlayBlockingCutsceneForChapter,
+  stepObjectiveHoldZone,
   stepRoosterCompanion,
+  type GraphicsProfileConfig,
 } from './rules';
 import { buildZoneLayout } from './zones';
 import {
@@ -112,11 +119,13 @@ import {
   applyCustomTextureToMaterial,
   applyImageUrlToMaterial,
   createContactShadowTexture,
+  createHubCourtyardMaterials,
   createNocturnalSkyTexture,
   createRainPuddleMaterial,
   createStarterWorldMaterials,
   loadExeCorruptedTextures,
   loadGeneratedStarterTextures,
+  type HubCourtyardMaterials,
   type WorldMaterialSet,
 } from './textures';
 import {
@@ -133,6 +142,8 @@ import {
   saveKeybinds,
 } from './keybinds';
 import type {
+  AABB,
+  ActiveObjectiveProgress,
   BindableAction,
   CoopScalingProfile,
   CutsceneDef,
@@ -142,11 +153,13 @@ import type {
   EnemyTacticMode,
   GameMode,
   GamePhase,
+  GraphicsQuality,
   HubRangeHitInfo,
   HudSnapshot,
   KeybindMap,
   Language,
   MusicSettings,
+  NearbyInteractKind,
   ObjectiveSpec,
   PickupKind,
   RoosterMode,
@@ -407,6 +420,7 @@ const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
 const _scaleVec = new THREE.Vector3();
 const _posVec = new THREE.Vector3();
+const _splashColor = new THREE.Color();
 
 function detectSoftwareWebGL(): boolean {
   try {
@@ -432,7 +446,9 @@ export class NegruzinoEngine {
   private audio = new NegruzinoAudio();
 
   private layout: SuburbLayout;
+  private enemySolidColliders: AABB[] = [];
   private materials: WorldMaterialSet;
+  private hubMaterials: HubCourtyardMaterials | null = null;
   private shadowTex: THREE.CanvasTexture;
   private maxAnisotropy: number;
 
@@ -450,7 +466,13 @@ export class NegruzinoEngine {
     beaconMat: THREE.MeshStandardMaterial;
     ringMesh: THREE.Mesh;
     beamMesh: THREE.Mesh;
+    corePivot?: THREE.Group;
+    zoneFillMat?: THREE.MeshBasicMaterial;
+    hitFlash: number;
   }> = [];
+  private activeObjectiveProgress: ActiveObjectiveProgress | null = null;
+  private destroyObjectiveHudTimer = 0;
+  private lastDamagedObjectiveId: string | null = null;
   private tapeNodes: Array<{
     spec: TapeSpec;
     group: THREE.Group;
@@ -461,10 +483,12 @@ export class NegruzinoEngine {
 
   // AAA Post-Processing (Hardware GPU path) + Atmospheric Mist Motes + Light Drizzle + Road Splashes
   private composer: EffectComposer | null = null;
+  private composerMsaaSamples = 0;
   private bloomPass: UnrealBloomPass | null = null;
   private cinematicPass: ShaderPass | null = null;
   private mistMotes: THREE.Points | null = null;
   private rainLines: THREE.LineSegments | null = null;
+  private totalRainVerts = 0;
   private rainOffsets: Float32Array | null = null;
   private rainSpeeds: Float32Array | null = null;
   private roadSplashMesh: THREE.InstancedMesh | null = null;
@@ -648,8 +672,15 @@ export class NegruzinoEngine {
   private exeFogColor = new THREE.Color(0x24090e);
   private liveFogColor = new THREE.Color(0x0b1019);
 
-  // Adaptive Device Profile, Rebindable Keyboard + Mouse4/Mouse5 & Mobile Touch State
+  // Adaptive Device Profile, Power/Graphics Quality, Rebindable Keyboard + Mouse4/Mouse5 & Mobile Touch State
   private deviceProfile: DeviceProfile = readBrowserDeviceProfile();
+  private graphicsQuality: GraphicsQuality = loadInitialGraphicsQuality(
+    this.deviceProfile.isTouch
+  );
+  private graphicsProfile: GraphicsProfileConfig = getGraphicsProfileConfig(
+    this.graphicsQuality,
+    false
+  );
   private keybinds: KeybindMap = loadKeybinds();
   private keybindCaptureActive = false;
   private heldKeys = new Set<string>();
@@ -665,6 +696,8 @@ export class NegruzinoEngine {
   private disposed = false;
   private frameId = 0;
   private lastNow = 0;
+  private lastRenderMs = 0;
+  private forceRenderNextFrame = true;
   private titleClock = 0;
   private hudEmitAccum = 0;
 
@@ -676,20 +709,20 @@ export class NegruzinoEngine {
     this.container = container;
     this.onHudUpdate = onHudUpdate;
     this.isSoftwareGl = detectSoftwareWebGL();
+    this.graphicsProfile = getGraphicsProfileConfig(
+      this.graphicsQuality,
+      this.isSoftwareGl
+    );
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl,
-      powerPreference: 'high-performance',
+      antialias: !this.isSoftwareGl && !this.graphicsProfile.usePostProcessing,
+      powerPreference: this.graphicsQuality === 'eco' ? 'low-power' : 'default',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.04;
-    this.renderer.setPixelRatio(
-      this.isSoftwareGl
-        ? 1
-        : Math.min(window.devicePixelRatio, this.deviceProfile.maxPixelRatio)
-    );
-    // Real dynamic shadows enabled on ALL devices (2048px GPU, 1024px software WebGL)
+    this.renderer.setPixelRatio(this.getEffectivePixelRatio());
+    // Real dynamic shadows scaled by Graphics & Power Mode
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setSize(
@@ -749,7 +782,7 @@ export class NegruzinoEngine {
     this.moonLight.position.set(18, 16, 46);
     this.moonLight.target.position.set(0, 0, 35);
     this.moonLight.castShadow = true;
-    const shadowRes = this.isSoftwareGl ? 1024 : 2048;
+    const shadowRes = this.graphicsProfile.moonShadowRes;
     this.moonLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.moonLight.shadow.camera.near = 2;
     this.moonLight.shadow.camera.far = 85;
@@ -768,14 +801,12 @@ export class NegruzinoEngine {
     this.flashlight.position.set(0.18, -0.05, -0.92);
     this.flashlightTarget.position.set(0, -0.18, -14);
     this.flashlight.target = this.flashlightTarget;
-    if (!this.isSoftwareGl) {
-      this.flashlight.castShadow = true;
-      this.flashlight.shadow.mapSize.set(1024, 1024);
-      this.flashlight.shadow.camera.near = 0.5;
-      this.flashlight.shadow.camera.far = 38;
-      this.flashlight.shadow.bias = -0.0005;
-      this.flashlight.shadow.normalBias = 0.024;
-    }
+    this.flashlight.shadow.mapSize.set(1024, 1024);
+    this.flashlight.shadow.camera.near = 0.5;
+    this.flashlight.shadow.camera.far = 38;
+    this.flashlight.shadow.bias = -0.0005;
+    this.flashlight.shadow.normalBias = 0.024;
+    this.flashlight.castShadow = this.graphicsProfile.flashlightShadow;
     this.camera.add(this.flashlight);
     this.camera.add(this.flashlightTarget);
 
@@ -891,28 +922,12 @@ export class NegruzinoEngine {
     }
     this.scene.add(this.particleMesh);
 
-    // AAA GPU Post-Processing (Soft circular isotropic Bloom + 35mm Filmic Color/Grain Pass)
+    // GPU Post-Processing & Dynamic Sodium SpotLights (managed cleanly by Graphics & Power Mode)
     if (!this.isSoftwareGl) {
-      const w = container.clientWidth || window.innerWidth;
-      const h = Math.max(1, container.clientHeight || window.innerHeight);
-      const rt = new THREE.WebGLRenderTarget(w, h, {
-        type: THREE.HalfFloatType,
-        samples: 4,
-      });
-      this.composer = new EffectComposer(this.renderer, rt);
-      this.composer.setPixelRatio(this.renderer.getPixelRatio());
-      this.composer.setSize(w, h);
-      this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.19, 0.36, 0.96);
-      this.composer.addPass(this.bloomPass);
-      this.cinematicPass = new ShaderPass(NEGRUZINO_CINEMATIC_SHADER);
-      this.composer.addPass(this.cinematicPass);
-      this.composer.addPass(new OutputPass());
-
-      // 2 Dynamic Shadow-Casting Warm Sodium Streetlamp SpotLights tracking nearest lamps (soft atmospheric falloff)
+      // 2 Dynamic Shadow-Casting Warm Sodium Streetlamp SpotLights (activated according to graphicsProfile.lampShadowSpots)
       for (let i = 0; i < 2; i++) {
-        const spot = new THREE.SpotLight(0xffa94d, 22, 22, 0.88, 0.86, 1.85);
-        spot.castShadow = true;
+        const spot = new THREE.SpotLight(0xffa94d, 0, 22, 0.88, 0.86, 1.85);
+        spot.castShadow = i < this.graphicsProfile.lampShadowSpots;
         spot.shadow.mapSize.set(512, 512);
         spot.shadow.camera.near = 0.8;
         spot.shadow.camera.far = 22;
@@ -924,7 +939,10 @@ export class NegruzinoEngine {
         this.dynamicLampSpots.push({ spot, target });
       }
 
+      this.applyGraphicsProfile();
       this.renderer.compile(this.scene, this.camera);
+    } else {
+      this.applyGraphicsProfile();
     }
 
     this.bindEvents();
@@ -1045,6 +1063,7 @@ export class NegruzinoEngine {
     });
     this.rainLines = new THREE.LineSegments(rainGeo, rainMat);
     this.rainLines.frustumCulled = false;
+    this.totalRainVerts = rainDrops * 2;
     this.scene.add(this.rainLines);
 
     // Wet-Asphalt Raindrop Impact Ripple Rings
@@ -1108,7 +1127,9 @@ export class NegruzinoEngine {
     skyMat.map = this.nocturnalSkyTex;
     skyMat.needsUpdate = true;
     if (this.rainLines) this.rainLines.visible = true;
-    if (this.roadSplashMesh) this.roadSplashMesh.visible = true;
+    if (this.roadSplashMesh) {
+      this.roadSplashMesh.visible = this.graphicsProfile.quality !== 'eco';
+    }
     if (this.mistMotes) this.mistMotes.visible = true;
     this.flashlightOn = true;
 
@@ -1170,6 +1191,7 @@ export class NegruzinoEngine {
 
     this.currentZone = zoneId;
     this.layout = buildZoneLayout(zoneId);
+    this.enemySolidColliders = this.layout.colliders.filter((c) => c.kind !== 'fence');
     this.applyZoneAtmosphere(zoneId);
 
     if (zoneId === 'hub') {
@@ -1187,6 +1209,7 @@ export class NegruzinoEngine {
     if (this.coopPartners.size > 0) {
       this.resetCoopPartnerPositionsToSpawn();
     }
+    this.forceRenderNextFrame = true;
   }
 
   private addPerimeterForest(
@@ -1296,39 +1319,103 @@ export class NegruzinoEngine {
   }
 
   private buildHubZone(root: THREE.Group): void {
-    // Warm sunlit grass meadow + clean sunlit courtyard gravel/concrete pad
-    const meadow = new THREE.Mesh(
+    if (!this.hubMaterials) {
+      this.hubMaterials = createHubCourtyardMaterials(this.maxAnisotropy);
+    }
+    const hubMats = this.hubMaterials;
+
+    // 1. Rich sunlit autumn Russian meadow surrounding the yard (tiled PBR grass + fallen birch leaves)
+    const meadowGeo = applyWorldPlaneUVs(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: 0x677b4b, roughness: 0.94 })
+      200,
+      200,
+      6.5,
+      6.5
     );
+    const meadow = new THREE.Mesh(meadowGeo, hubMats.meadow);
     meadow.rotation.x = -Math.PI / 2;
     meadow.receiveShadow = true;
     root.add(meadow);
 
-    const yardPad = new THREE.Mesh(
+    // 2. Interlocking Soviet PDN reinforced concrete courtyard slabs with stone perimeter curbing
+    const yardPadGeo = applyWorldPlaneUVs(
       new THREE.PlaneGeometry(46, 42),
-      new THREE.MeshStandardMaterial({ color: 0x9b9282, roughness: 0.88 })
+      46,
+      42,
+      4.5,
+      4.5
     );
+    const yardPad = new THREE.Mesh(yardPadGeo, hubMats.courtyardConcrete);
     yardPad.rotation.x = -Math.PI / 2;
     yardPad.position.set(0, 0.02, -1);
     yardPad.receiveShadow = true;
     root.add(yardPad);
 
-    // Firing range sandy lane pad
-    const rangeLane = new THREE.Mesh(
+    const curbMat = this.materials.concrete;
+    const northCurb = new THREE.Mesh(new THREE.BoxGeometry(46.5, 0.14, 0.34), curbMat);
+    northCurb.position.set(0, 0.07, -22.1);
+    northCurb.receiveShadow = true;
+    const southCurb = new THREE.Mesh(new THREE.BoxGeometry(46.5, 0.14, 0.34), curbMat);
+    southCurb.position.set(0, 0.07, 20.1);
+    southCurb.receiveShadow = true;
+    const westCurb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 42.4), curbMat);
+    westCurb.position.set(-23.1, 0.07, -1);
+    westCurb.receiveShadow = true;
+    const eastCurb = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 42.4), curbMat);
+    eastCurb.position.set(23.1, 0.07, -1);
+    eastCurb.receiveShadow = true;
+    root.add(northCurb, southCurb, westCurb, eastCurb);
+
+    // 3. Compacted sand & gravel firing-range apron with painted yardage marker lines
+    const rangeLaneGeo = applyWorldPlaneUVs(
       new THREE.PlaneGeometry(25, 20),
-      new THREE.MeshStandardMaterial({ color: 0x867b67, roughness: 0.92 })
+      25,
+      20,
+      4.2,
+      4.2
     );
+    const rangeLane = new THREE.Mesh(rangeLaneGeo, hubMats.rangeGravel);
     rangeLane.rotation.x = -Math.PI / 2;
-    rangeLane.position.set(0, 0.03, -12.2);
+    rangeLane.position.set(0, 0.032, -12.2);
     rangeLane.receiveShadow = true;
     root.add(rangeLane);
 
-    // South Garage Workshop & West Tool Shed
-    root.add(createHubGarageBuilding());
-    root.add(createHubToolShed());
+    // Subtle faded white/chalk firing-line & distance stripes on the gravel apron
+    const chalkMat = new THREE.MeshStandardMaterial({
+      color: 0xe6decb,
+      roughness: 0.92,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
+    for (const lz of [-3.2, -10.0, -16.0, -21.5]) {
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(21.4, 0.12), chalkMat);
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(0, 0.04, lz);
+      root.add(line);
+    }
 
-    // Wooden perimeter fences
+    // 4. South Garage Workshop & West Tool Shed (textured plaster, brick plinth, steel gates, roof eaves & yard props)
+    root.add(createHubGarageBuilding(this.materials, hubMats));
+    root.add(createHubToolShed(this.materials, hubMats));
+
+    // Yard bench & rustic barrels near garage side for cozy lived-in golden-hour staging yard
+    const yardBench = createYardBench(this.materials);
+    yardBench.position.set(11.6, 0, 12.6);
+    yardBench.rotation.y = -Math.PI / 2;
+    root.add(yardBench);
+    for (const [bx, bz, ry] of [
+      [15.4, 15.8, 0.6],
+      [16.3, 15.2, 2.1],
+      [-15.8, -1.6, 1.3],
+    ]) {
+      const barrel = createRustBarrel(this.materials);
+      barrel.position.set(bx, 0, bz);
+      barrel.rotation.y = ry;
+      root.add(barrel);
+    }
+
+    // 5. Wooden perimeter fences + lush courtyard grass tufts & yard bushes along fence corners
     for (const col of this.layout.colliders) {
       if (col.kind === 'fence' && col.id.startsWith('hub_fence')) {
         root.add(
@@ -1337,41 +1424,99 @@ export class NegruzinoEngine {
       }
     }
 
-    // Moskvitch-412 Departure Car on West Courtyard + Glowing Boarding Halo
+    const grassGeo = createGrassTuftGeo();
+    const grassCoords: Array<[number, number, number]> = [];
+    for (let gx = -22; gx <= 22; gx += 3.2) {
+      grassCoords.push([gx, -22.5, 1.15]);
+      grassCoords.push([gx, 20.6, 1.05]);
+    }
+    for (let gz = -20; gz <= 19; gz += 3.2) {
+      grassCoords.push([-23.5, gz, 1.1]);
+      grassCoords.push([23.5, gz, 1.1]);
+    }
+    const grassMat = this.materials.foliage.clone();
+    grassMat.side = THREE.DoubleSide;
+    const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, grassCoords.length);
+    grassInst.receiveShadow = true;
+    const grassTint = new THREE.Color();
+    grassCoords.forEach(([gx, gz, sc], idx) => {
+      _posVec.set(gx, 0.01, gz);
+      _quat.setFromAxisAngle(_vecA.set(0, 1, 0), idx * 1.73);
+      _scaleVec.set(sc, sc * (0.9 + (idx % 3) * 0.16), sc);
+      _mat4.compose(_posVec, _quat, _scaleVec);
+      grassInst.setMatrixAt(idx, _mat4);
+      grassTint.setHSL(0.24 + (idx % 4) * 0.025, 0.34, 0.56 + (idx % 3) * 0.06);
+      grassInst.setColorAt(idx, grassTint);
+    });
+    grassInst.computeBoundingSphere();
+    root.add(grassInst);
+
+    const bushGeo = createYardBushGeo();
+    const hubBushCoords: Array<[number, number, number]> = [
+      [-21.2, -19.8, 1.25],
+      [21.4, -19.5, 1.3],
+      [-21.5, 17.5, 1.2],
+      [21.2, 16.8, 1.15],
+      [18.8, -1.8, 1.1],
+      [-19.5, -13.5, 1.15],
+    ];
+    const bushInst = new THREE.InstancedMesh(bushGeo, this.materials.foliage, hubBushCoords.length);
+    bushInst.castShadow = true;
+    bushInst.receiveShadow = true;
+    hubBushCoords.forEach(([bx, bz, sc], idx) => {
+      _posVec.set(bx, 0, bz);
+      _quat.setFromAxisAngle(_vecA.set(0, 1, 0), idx * 2.1);
+      _scaleVec.set(sc, sc * 0.92, sc);
+      _mat4.compose(_posVec, _quat, _scaleVec);
+      bushInst.setMatrixAt(idx, _mat4);
+      grassTint.setHSL(0.26 + (idx % 3) * 0.03, 0.3, 0.48 + (idx % 3) * 0.06);
+      bushInst.setColorAt(idx, grassTint);
+    });
+    bushInst.computeBoundingSphere();
+    root.add(bushInst);
+
+    // 6. Moskvitch-412 Departure Car on West Courtyard + Grounded Upright Steel Signpost & Flat Ring
     const anchors = this.layout.hubAnchors!;
     const car = createSovietCar(this.materials);
     car.position.set(anchors.carPos.x, 0, anchors.carPos.z);
     car.rotation.y = Math.PI + 0.25;
     root.add(car);
     root.add(
-      createDepartureCarHalo(anchors.carPos.x, anchors.carPos.z, this.animatedZoneProps)
+      createDepartureCarHalo(
+        anchors.carPos.x,
+        anchors.carPos.z,
+        this.animatedZoneProps,
+        this.materials
+      )
     );
 
-    // Interactive Arsenal & Tactical Specs Terminal Stand on East Courtyard
+    // 7. Interactive Arsenal & Tactical Specs Terminal Stand on East Courtyard
     root.add(
       createSpecsTerminalStand(
         anchors.terminalPos.x,
         anchors.terminalPos.z,
-        this.animatedZoneProps
+        this.animatedZoneProps,
+        this.materials,
+        hubMats
       )
     );
 
-    // Firing Range Structure & 5 AFK Target Dummies (10m–22m)
-    root.add(createFiringRangeStructure());
+    // 8. Firing Range Structure & 5 AFK Target Dummies (10m–22m) with sandbag rests & timber shelter
+    root.add(createFiringRangeStructure(this.materials, hubMats));
     for (const spec of anchors.rangeDummies) {
-      const dummy = createRangeDummyRig(spec);
+      const dummy = createRangeDummyRig(spec, this.materials, hubMats);
       root.add(dummy.root);
       this.rangeDummies.push(dummy);
     }
 
-    // Courtyard daylight poles (unlit/subtle warm decor)
+    // 9. Courtyard daylight poles (subtle warm decor)
     for (const spec of this.layout.lamps) {
       const built = createStreetlamp(spec, this.materials);
       built.bulbMat.emissiveIntensity = 0.25;
       root.add(built.group);
     }
 
-    // Warm autumn Russian birch & spruce treeline surrounding the safe yard
+    // 10. Warm autumn Russian birch & spruce treeline surrounding the safe yard
     this.addPerimeterForest(root, 27, -28, 28, true);
   }
 
@@ -1418,40 +1563,63 @@ export class NegruzinoEngine {
     }
 
     // KPP-3 Checkpoint Booth & East Generator Shed
-    root.add(createKppGuardhouse(-11.0, 25.0));
-    const genShed = new THREE.Mesh(
-      new THREE.BoxGeometry(6.8, 3.4, 6.2),
-      new THREE.MeshStandardMaterial({ color: 0x5d6260, roughness: 0.88 })
+    root.add(createKppGuardhouse(-11.0, 25.0, this.materials));
+    const genShedGroup = new THREE.Group();
+    genShedGroup.position.set(13.0, 0, 25.75);
+    const genBody = new THREE.Mesh(
+      applyWorldBoxUVs(new THREE.BoxGeometry(6.8, 3.3, 6.2), 6.8, 3.3, 6.2, 3.2, 3.2),
+      this.materials.concrete
     );
-    genShed.position.set(13.0, 1.7, 25.75);
-    genShed.castShadow = true;
-    genShed.receiveShadow = true;
-    root.add(genShed);
+    genBody.position.y = 1.65;
+    genBody.castShadow = true;
+    genBody.receiveShadow = true;
+    genShedGroup.add(genBody);
+    const genRoof = new THREE.Mesh(
+      applyWorldBoxUVs(new THREE.BoxGeometry(7.25, 0.28, 6.65), 7.25, 0.28, 6.65, 3.0, 3.0),
+      this.materials.roof
+    );
+    genRoof.position.y = 3.44;
+    genRoof.castShadow = true;
+    genShedGroup.add(genRoof);
+    const genDoor = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 2.35, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0x3b4448, roughness: 0.56, metalness: 0.45 })
+    );
+    genDoor.position.set(-1.3, 1.18, 3.12);
+    genShedGroup.add(genDoor);
+    const genLouvers = new THREE.Mesh(
+      new THREE.BoxGeometry(2.1, 1.15, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x262c30, roughness: 0.65, metalness: 0.5 })
+    );
+    genLouvers.position.set(1.4, 2.05, 3.1);
+    genShedGroup.add(genLouvers);
+    root.add(genShedGroup);
 
     // West & East Bus Repair Hangars
-    root.add(createDepotHangar(-20.5, 2.0, 11.6, 15.6, 1));
-    root.add(createDepotHangar(20.5, -1.0, 11.6, 17.6, -1));
+    root.add(createDepotHangar(-20.5, 2.0, 11.6, 15.6, 1, this.materials));
+    root.add(createDepotHangar(20.5, -1.0, 11.6, 17.6, -1, this.materials));
 
     // Wrecked & frozen Route #404 Soviet Bus in central tarmac
-    const bus = createBus404Wreck();
+    const bus = createBus404Wreck(this.materials);
     bus.position.set(0, 0, 0);
     bus.rotation.y = 0.08;
     root.add(bus);
 
     // North-West Fuel Cistern Farm
-    root.add(createFuelCistern(-18.0, -25.75));
-    root.add(createFuelCistern(-18.0, -35.25));
+    root.add(createFuelCistern(-18.0, -25.75, this.materials));
+    root.add(createFuelCistern(-18.0, -35.25, this.materials));
 
     // North-East Dispatch Radio Tower (with rotating radar dish)
-    root.add(createDispatchTower(18.25, -29.5, this.animatedZoneProps));
+    root.add(createDispatchTower(18.25, -29.5, this.animatedZoneProps, this.materials));
 
-    // Concrete Jersey barriers
-    const barrierMat = new THREE.MeshStandardMaterial({ color: 0x6b6f6e, roughness: 0.9 });
+    // Textured Concrete Jersey barriers with top chamfer cap
     for (const col of this.layout.colliders) {
       if (col.kind === 'fence') {
+        const bw = col.maxX - col.minX;
+        const bd = col.maxZ - col.minZ;
         const b = new THREE.Mesh(
-          new THREE.BoxGeometry(col.maxX - col.minX, col.height, col.maxZ - col.minZ),
-          barrierMat
+          applyWorldBoxUVs(new THREE.BoxGeometry(bw, col.height, bd), bw, col.height, bd, 2.8, 2.8),
+          this.materials.concrete
         );
         b.position.set(
           (col.minX + col.maxX) * 0.5,
@@ -1535,31 +1703,41 @@ export class NegruzinoEngine {
     root.add(arenaRing);
 
     // Central Resonator Core Tower with 3 counter-rotating magnetic rings
-    root.add(createResonatorCoreTower(0, -4.0, this.animatedZoneProps));
+    root.add(createResonatorCoreTower(0, -4.0, this.animatedZoneProps, this.materials));
 
     // 4 Towering Cooling Pylons
-    root.add(createCoolingPylon(-15.0, 9.0));
-    root.add(createCoolingPylon(15.0, 9.0));
-    root.add(createCoolingPylon(-15.0, -17.0));
-    root.add(createCoolingPylon(15.0, -17.0));
+    root.add(createCoolingPylon(-15.0, 9.0, this.materials));
+    root.add(createCoolingPylon(15.0, 9.0, this.materials));
+    root.add(createCoolingPylon(-15.0, -17.0, this.materials));
+    root.add(createCoolingPylon(15.0, -17.0, this.materials));
 
     // West & East High-Voltage Capacitor Bank Halls
-    root.add(createCapacitorBank(-25.5, -4.0));
-    root.add(createCapacitorBank(25.5, -4.0));
+    root.add(createCapacitorBank(-25.5, -4.0, this.materials));
+    root.add(createCapacitorBank(25.5, -4.0, this.materials));
 
     // North Archive Bunker Vault
-    root.add(createArchiveBunker(0, -36.5));
+    root.add(createArchiveBunker(0, -36.5, this.materials));
 
-    // South Gatehouse Concrete Pillars & Security Fences
-    const gateMat = new THREE.MeshStandardMaterial({ color: 0x52575e, roughness: 0.88 });
+    // South Gatehouse Concrete Pillars & Steel Gantry
+    const gantrySteelMat = new THREE.MeshStandardMaterial({
+      color: 0x3b4248,
+      roughness: 0.52,
+      metalness: 0.55,
+    });
     for (const gx of [-10.25, 10.25]) {
-      const pillar = new THREE.Mesh(new THREE.BoxGeometry(7.2, 4.6, 4.8), gateMat);
+      const pillar = new THREE.Mesh(
+        applyWorldBoxUVs(new THREE.BoxGeometry(7.2, 4.6, 4.8), 7.2, 4.6, 4.8, 3.2, 3.2),
+        this.materials.concrete
+      );
       pillar.position.set(gx, 2.3, 26.5);
       pillar.castShadow = true;
       pillar.receiveShadow = true;
       root.add(pillar);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.24, 5.1), gantrySteelMat);
+      cap.position.set(gx, 4.72, 26.5);
+      root.add(cap);
     }
-    const gantry = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.65, 1.2), gateMat);
+    const gantry = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.65, 1.2), gantrySteelMat);
     gantry.position.set(0, 4.7, 26.5);
     root.add(gantry);
 
@@ -2003,10 +2181,14 @@ export class NegruzinoEngine {
     };
     const activeChapNum = this.chapterIndex + 1;
     for (const obj of this.layout.objectives) {
-      const shrine = createObjectiveShrine(
-        chapterColors[obj.chapter] ?? 0x5fa88e,
-        this.materials
-      );
+      const objKind = obj.kind ?? 'interact';
+      const baseColor =
+        objKind === 'destroy'
+          ? 0xf25c3b
+          : objKind === 'hold'
+            ? 0x3fd4c6
+            : (chapterColors[obj.chapter] ?? 0x5fa88e);
+      const shrine = createObjectiveShrine(baseColor, this.materials, objKind);
       shrine.group.position.set(obj.x, 0, obj.z);
       shrine.group.visible = obj.chapter === activeChapNum;
       root.add(shrine.group);
@@ -2016,6 +2198,9 @@ export class NegruzinoEngine {
         beaconMat: shrine.beaconMat,
         ringMesh: shrine.ringMesh,
         beamMesh: shrine.beamMesh,
+        corePivot: shrine.corePivot,
+        zoneFillMat: shrine.zoneFillMat,
+        hitFlash: 0,
       });
     }
 
@@ -2066,13 +2251,132 @@ export class NegruzinoEngine {
     window.removeEventListener('contextmenu', this.handleContextMenu);
   }
 
+  private getEffectivePixelRatio(): number {
+    if (this.isSoftwareGl) return 1;
+    return Math.min(
+      window.devicePixelRatio || 1,
+      this.deviceProfile.maxPixelRatio,
+      this.graphicsProfile.maxPixelRatio
+    );
+  }
+
+  private ensureComposer(samples: number): void {
+    const w = this.container.clientWidth || window.innerWidth;
+    const h = Math.max(1, this.container.clientHeight || window.innerHeight);
+    if (this.composer && this.composerMsaaSamples === samples) {
+      return;
+    }
+    if (this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+      this.bloomPass = null;
+      this.cinematicPass = null;
+    }
+    const rt = new THREE.WebGLRenderTarget(w, h, {
+      type: THREE.HalfFloatType,
+      samples,
+    });
+    this.composer = new EffectComposer(this.renderer, rt);
+    this.composerMsaaSamples = samples;
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer.setSize(w, h);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.19, 0.36, 0.96);
+    this.composer.addPass(this.bloomPass);
+    this.cinematicPass = new ShaderPass(NEGRUZINO_CINEMATIC_SHADER);
+    this.composer.addPass(this.cinematicPass);
+    this.composer.addPass(new OutputPass());
+  }
+
+  private applyGraphicsProfile(): void {
+    this.graphicsProfile = getGraphicsProfileConfig(
+      this.graphicsQuality,
+      this.isSoftwareGl
+    );
+    const p = this.graphicsProfile;
+    const w = this.container.clientWidth || window.innerWidth;
+    const h = Math.max(1, this.container.clientHeight || window.innerHeight);
+    const pr = this.getEffectivePixelRatio();
+
+    this.renderer.setPixelRatio(pr);
+    this.renderer.setSize(w, h);
+
+    // Resize directional shadow map cleanly if resolution changed
+    if (
+      this.moonLight.shadow.mapSize.x !== p.moonShadowRes ||
+      this.moonLight.shadow.mapSize.y !== p.moonShadowRes
+    ) {
+      this.moonLight.shadow.mapSize.set(p.moonShadowRes, p.moonShadowRes);
+      if (this.moonLight.shadow.map) {
+        this.moonLight.shadow.map.dispose();
+        this.moonLight.shadow.map = null;
+      }
+      this.moonLight.shadow.needsUpdate = true;
+    }
+
+    // Flashlight dynamic shadow toggle
+    this.flashlight.castShadow = p.flashlightShadow;
+    if (!p.flashlightShadow && this.flashlight.shadow.map) {
+      this.flashlight.shadow.map.dispose();
+      this.flashlight.shadow.map = null;
+    }
+
+    // Streetlamp dynamic shadow spot cap
+    for (let i = 0; i < this.dynamicLampSpots.length; i++) {
+      const enabled = i < p.lampShadowSpots;
+      const spot = this.dynamicLampSpots[i].spot;
+      spot.castShadow = enabled;
+      if (!enabled) {
+        spot.intensity = 0;
+        const sm = spot.shadow.map;
+        if (sm) {
+          sm.dispose();
+          spot.shadow.map = null;
+        }
+      }
+    }
+
+    // Post-processing composer lifecycle (skipped in eco mode to save GPU bandwidth & battery)
+    if (p.usePostProcessing && !this.isSoftwareGl) {
+      this.ensureComposer(p.msaaSamples);
+      if (this.composer) {
+        this.composer.setPixelRatio(pr);
+        this.composer.setSize(w, h);
+      }
+      if (this.bloomPass) {
+        this.bloomPass.setSize(w, h);
+        this.bloomPass.resolution.set(w, h);
+      }
+    } else if (this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+      this.bloomPass = null;
+      this.cinematicPass = null;
+      this.composerMsaaSamples = 0;
+    }
+
+    // Scale world-space rain filament draw count
+    if (this.rainLines && this.totalRainVerts > 0) {
+      const activeVerts = Math.max(
+        2,
+        Math.floor((this.totalRainVerts / 2) * p.rainScale) * 2
+      );
+      this.rainLines.geometry.setDrawRange(0, activeVerts);
+    }
+
+    // Hide road splashes in eco mode (or hub)
+    if (this.roadSplashMesh) {
+      this.roadSplashMesh.visible = this.currentZone !== 'hub' && p.quality !== 'eco';
+    }
+
+    this.forceRenderNextFrame = true;
+  }
+
   private handleResize = (): void => {
     this.deviceProfile = readBrowserDeviceProfile();
     const w = this.container.clientWidth || window.innerWidth;
     const h = Math.max(1, this.container.clientHeight || window.innerHeight);
-    const pr = this.isSoftwareGl
-      ? 1
-      : Math.min(window.devicePixelRatio, this.deviceProfile.maxPixelRatio);
+    const pr = this.getEffectivePixelRatio();
     this.renderer.setPixelRatio(pr);
     this.camera.aspect = w / h;
     if (!this.isScoped) {
@@ -2088,6 +2392,7 @@ export class NegruzinoEngine {
       this.bloomPass.setSize(w, h);
       this.bloomPass.resolution.set(w, h);
     }
+    this.forceRenderNextFrame = true;
     this.emitHud();
   };
 
@@ -2108,6 +2413,9 @@ export class NegruzinoEngine {
       this.virtualMoveY = 0;
       this.virtualSprint = false;
       this.mouseDown = false;
+    } else {
+      this.lastNow = performance.now();
+      this.forceRenderNextFrame = true;
     }
   };
 
@@ -2651,10 +2959,14 @@ export class NegruzinoEngine {
 
     const action = this.pendingAfterUpgrade;
     if (action === 'next_chapter') {
-      this.openCutscene(
-        TRANSLATIONS[this.lang].chapterMeta[this.chapterIndex].introCutscene,
-        false
-      );
+      if (shouldPlayBlockingCutsceneForChapter(this.chapterIndex)) {
+        this.openCutscene(
+          TRANSLATIONS[this.lang].chapterMeta[this.chapterIndex].introCutscene,
+          false
+        );
+      } else {
+        this.beginChapterGameplay(this.chapterIndex);
+      }
     } else if (action === 'next_loop') {
       this.chapterIndex = 0;
       this.beginChapterGameplay(0);
@@ -2708,10 +3020,14 @@ export class NegruzinoEngine {
     );
     if (choices.length === 0) {
       if (after === 'next_chapter') {
-        this.openCutscene(
-          TRANSLATIONS[this.lang].chapterMeta[this.chapterIndex].introCutscene,
-          false
-        );
+        if (shouldPlayBlockingCutsceneForChapter(this.chapterIndex)) {
+          this.openCutscene(
+            TRANSLATIONS[this.lang].chapterMeta[this.chapterIndex].introCutscene,
+            false
+          );
+        } else {
+          this.beginChapterGameplay(this.chapterIndex);
+        }
       } else if (after === 'next_loop') {
         this.chapterIndex = 0;
         this.beginChapterGameplay(0);
@@ -2802,6 +3118,14 @@ export class NegruzinoEngine {
     const clamped = Math.max(0.5, Math.min(2.0, Number(sens.toFixed(2))));
     this.mouseSensitivity = clamped;
     saveSensitivity(clamped);
+    this.emitHud();
+  }
+
+  public setGraphicsQuality(quality: GraphicsQuality): void {
+    if (this.graphicsQuality === quality) return;
+    this.graphicsQuality = quality;
+    saveGraphicsQuality(quality);
+    this.applyGraphicsProfile();
     this.emitHud();
   }
 
@@ -2983,17 +3307,34 @@ export class NegruzinoEngine {
 
     const chapterPalette = [0xe8963a, 0x5fa88e, 0x5da4e8, 0xd98a4a, 0xe64d4d, 0xd84654];
 
-    // Show objectives belonging to this chapter
+    // Show objectives belonging to this chapter and reset per-chapter HP / hold state
+    this.activeObjectiveProgress = null;
+    this.destroyObjectiveHudTimer = 0;
+    this.lastDamagedObjectiveId = null;
     for (const node of this.objectiveNodes) {
       const alreadyDoneInCoop = Boolean(
         this.coopRoom?.completedObjectives.includes(node.spec.id)
       );
       node.spec.completed = node.spec.chapter < safeIdx + 1 || alreadyDoneInCoop;
+      node.spec.hp = node.spec.maxHp ?? 180;
+      node.spec.holdProgress = 0;
+      node.hitFlash = 0;
       node.group.visible = node.spec.chapter === safeIdx + 1;
       node.beamMesh.visible = !node.spec.completed;
+      if (node.corePivot) {
+        node.corePivot.visible = !node.spec.completed;
+      }
+      if (node.zoneFillMat) {
+        node.zoneFillMat.opacity = node.spec.completed ? 0.03 : 0.1;
+      }
+      const kind = node.spec.kind ?? 'interact';
       const col = node.spec.completed
         ? 0x45d68a
-        : chapterPalette[(node.spec.chapter - 1) % chapterPalette.length];
+        : kind === 'destroy'
+          ? 0xf25c3b
+          : kind === 'hold'
+            ? 0x3fd4c6
+            : chapterPalette[(node.spec.chapter - 1) % chapterPalette.length];
       node.beaconMat.emissive.setHex(col);
       node.beaconMat.color.setHex(col);
     }
@@ -3571,6 +3912,8 @@ export class NegruzinoEngine {
     node.beaconMat.emissive.setHex(0x45d68a);
     node.beaconMat.color.setHex(0x45d68a);
     node.beamMesh.visible = false;
+    if (node.corePivot) node.corePivot.visible = false;
+    if (node.zoneFillMat) node.zoneFillMat.opacity = 0.03;
     this.audio.playObjectiveComplete();
     this.spawnBurst(node.spec.x, 1.8, node.spec.z, 18, 0x5fa88e, 4.0);
     this.customStoryLog = {
@@ -3611,7 +3954,11 @@ export class NegruzinoEngine {
     }
     const clamped = Math.max(0, Math.min(CHAPTERS.length - 1, chapterIndex));
     this.chapterIndex = clamped;
-    this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[clamped].introCutscene, false);
+    if (shouldPlayBlockingCutsceneForChapter(clamped)) {
+      this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[clamped].introCutscene, false);
+    } else {
+      this.beginChapterGameplay(clamped);
+    }
   }
 
   private markTapeCollectedLocally(tapeId: string): boolean {
@@ -3636,12 +3983,15 @@ export class NegruzinoEngine {
       this.audio.setPaused(true);
       document.exitPointerLock?.();
       this.syncBodyState();
+      this.forceRenderNextFrame = true;
       this.emitHud();
     } else if (!paused && this.phase === 'paused') {
       this.phase = this.phaseBeforePause === 'hub' ? 'hub' : 'playing';
       this.audio.setPaused(false);
       (document.activeElement as HTMLElement | null)?.blur?.();
       this.syncBodyState();
+      this.lastNow = performance.now();
+      this.forceRenderNextFrame = true;
       this.emitHud();
     }
   }
@@ -4265,43 +4615,170 @@ export class NegruzinoEngine {
     const activeChap = this.chapterIndex + 1;
     for (const node of this.objectiveNodes) {
       if (node.spec.chapter !== activeChap || node.spec.completed) continue;
+      if ((node.spec.kind ?? 'interact') !== 'interact') continue;
       const d = Math.hypot(node.spec.x - this.playerX, node.spec.z - this.playerZ);
       if (d < 3.8) {
-        node.spec.completed = true;
-        node.beaconMat.emissive.setHex(0x45d68a);
-        node.beaconMat.color.setHex(0x45d68a);
-        node.beamMesh.visible = false;
-        this.score += Math.round(
-          250 * this.loopNumber * DIFFICULTY_PRESETS[this.difficulty].scoreMult
-        );
-        this.awardXp(150);
-        this.updateRecords();
-        this.audio.playObjectiveComplete();
-        this.spawnBurst(node.spec.x, 1.8, node.spec.z, 22, 0x5fa88e, 4.2);
-
-        // Play the matching cassette / radio story discovery subtitle across all 3 acts
-        const storyLogs = TRANSLATIONS[this.lang].storyLogs;
-        if (node.spec.id in storyLogs) {
-          this.customStoryLog = null;
-          this.showStoryLog(node.spec.id as keyof typeof storyLogs, 7.6);
-        }
-
-        if (this.coopClient?.isInActiveSession()) {
-          this.coopClient.sendObjectiveComplete(node.spec.id);
-        }
-
-        // Restock ammo crate bonus on activating a fuse box / relay!
-        const coopScale = this.getCoopScaling();
-        for (const wid of WEAPON_ORDER) {
-          this.ammo[wid].reserve = Math.min(
-            WEAPONS[wid].maxReserve,
-            this.ammo[wid].reserve + Math.round(WEAPONS[wid].magSize * coopScale.ammoRefillMult)
-          );
-        }
-        this.checkChapterCompletion();
-        this.emitHud();
+        this.completeObjectiveNode(node);
         return;
       }
+    }
+  }
+
+  private completeObjectiveNode(
+    node: NegruzinoEngine['objectiveNodes'][number]
+  ): void {
+    if (node.spec.completed) return;
+    node.spec.completed = true;
+    node.spec.hp = 0;
+    node.beaconMat.emissive.setHex(0x45d68a);
+    node.beaconMat.color.setHex(0x45d68a);
+    node.beamMesh.visible = false;
+    if (node.corePivot) node.corePivot.visible = false;
+    if (node.zoneFillMat) node.zoneFillMat.opacity = 0.03;
+    if (this.lastDamagedObjectiveId === node.spec.id) {
+      this.lastDamagedObjectiveId = null;
+      this.destroyObjectiveHudTimer = 0;
+    }
+
+    this.score += Math.round(
+      280 * this.loopNumber * DIFFICULTY_PRESETS[this.difficulty].scoreMult
+    );
+    this.awardXp(160);
+    this.updateRecords();
+    this.audio.playObjectiveComplete();
+    this.trauma = Math.min(1, this.trauma + 0.34);
+
+    // Tactical EMP shockwave blast: damages & knocks back monsters within 11m and drops supplies!
+    const kind = node.spec.kind ?? 'interact';
+    const burstHex = kind === 'destroy' ? 0xf25c3b : kind === 'hold' ? 0x3fd4c6 : 0x5fa88e;
+    this.spawnBurst(node.spec.x, 1.8, node.spec.z, 28, burstHex, 5.4);
+    const isCoopGuest = Boolean(this.coopClient?.isInActiveSession() && !this.coopClient.isHost());
+    if (!isCoopGuest) {
+      for (const e of this.enemies) {
+        if (e.dying) continue;
+        const dx = e.x - node.spec.x;
+        const dz = e.z - node.spec.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 11.0) {
+          e.hp -= 65;
+          e.hitFlash = 0.14;
+          e.flinchTimer = 0.35;
+          const inv = dist > 0.05 ? 1 / dist : 1;
+          e.knockVx += dx * inv * 9.5;
+          e.knockVz += dz * inv * 9.5;
+          if (e.hp <= 0) {
+            e.dying = true;
+            e.deathTimer = 0.48;
+            this.kills += 1;
+            this.chapterKills += 1;
+            this.score += 120;
+            this.awardXp(55);
+            this.spawnBurst(e.x, 1.3, e.z, 16, 0xc93b3b, 4.6);
+          }
+        }
+      }
+      this.maybeSpawnPickup(node.spec.x, node.spec.z, false);
+    }
+
+    // Play the matching cassette / radio story discovery subtitle across all 3 acts
+    const storyLogs = TRANSLATIONS[this.lang].storyLogs;
+    if (node.spec.id in storyLogs) {
+      this.customStoryLog = null;
+      this.showStoryLog(node.spec.id as keyof typeof storyLogs, 7.2);
+    }
+
+    if (this.coopClient?.isInActiveSession()) {
+      this.coopClient.sendObjectiveComplete(node.spec.id);
+    }
+
+    // Restock ammo crate bonus on completing any objective!
+    const coopScale = this.getCoopScaling();
+    for (const wid of WEAPON_ORDER) {
+      this.ammo[wid].reserve = Math.min(
+        WEAPONS[wid].maxReserve,
+        this.ammo[wid].reserve + Math.round(WEAPONS[wid].magSize * coopScale.ammoRefillMult)
+      );
+    }
+    this.checkChapterCompletion();
+    this.emitHud();
+  }
+
+  private updateObjectives(dt: number): void {
+    if (this.mode !== 'story' || this.phase !== 'playing') {
+      this.activeObjectiveProgress = null;
+      return;
+    }
+    const activeChap = this.chapterIndex + 1;
+    const t = TRANSLATIONS[this.lang];
+    let holdProgressInfo: ActiveObjectiveProgress | null = null;
+
+    for (const node of this.objectiveNodes) {
+      if (node.spec.chapter !== activeChap || node.spec.completed) continue;
+      if (node.hitFlash > 0) {
+        node.hitFlash = Math.max(0, node.hitFlash - dt);
+      }
+      if ((node.spec.kind ?? 'interact') === 'hold') {
+        const duration = node.spec.holdDuration ?? 5.5;
+        const step = stepObjectiveHoldZone(
+          this.playerX,
+          this.playerZ,
+          node.spec.x,
+          node.spec.z,
+          node.spec.holdProgress ?? 0,
+          duration,
+          dt,
+          4.8
+        );
+        node.spec.holdProgress = step.progress;
+        if (node.zoneFillMat) {
+          node.zoneFillMat.opacity = step.inZone ? 0.24 + step.ratio * 0.28 : 0.09;
+        }
+        if (step.inZone) {
+          // Enemies press the perimeter slightly faster while holding a zone!
+          this.spawnTimer = Math.min(this.spawnTimer, 2.2);
+          holdProgressInfo = {
+            kind: 'hold',
+            label: t.objectiveLabels[node.spec.id] ?? node.spec.label,
+            ratio: step.ratio,
+            currentValue: Math.round(step.ratio * 100),
+            maxValue: 100,
+          };
+        }
+        if (step.completedNow) {
+          this.completeObjectiveNode(node);
+          return;
+        }
+      }
+    }
+
+    if (this.destroyObjectiveHudTimer > 0) {
+      this.destroyObjectiveHudTimer = Math.max(0, this.destroyObjectiveHudTimer - dt);
+    }
+
+    if (holdProgressInfo) {
+      this.activeObjectiveProgress = holdProgressInfo;
+    } else if (this.destroyObjectiveHudTimer > 0 && this.lastDamagedObjectiveId) {
+      const targetNode = this.objectiveNodes.find(
+        (n) =>
+          n.spec.id === this.lastDamagedObjectiveId &&
+          n.spec.chapter === activeChap &&
+          !n.spec.completed
+      );
+      if (targetNode) {
+        const maxHp = targetNode.spec.maxHp ?? 180;
+        const curHp = Math.max(0, Math.round(targetNode.spec.hp ?? maxHp));
+        this.activeObjectiveProgress = {
+          kind: 'destroy',
+          label: t.objectiveLabels[targetNode.spec.id] ?? targetNode.spec.label,
+          ratio: Math.max(0, Math.min(1, curHp / Math.max(1, maxHp))),
+          currentValue: curHp,
+          maxValue: maxHp,
+        };
+      } else {
+        this.activeObjectiveProgress = null;
+      }
+    } else {
+      this.activeObjectiveProgress = null;
     }
   }
 
@@ -4345,7 +4822,11 @@ export class NegruzinoEngine {
           this.chapterIndex = nextIdx;
           if (this.coopClient?.isInActiveSession() && this.coopClient.isHost()) {
             this.coopClient.sendChapterAdvance(nextIdx, false);
-            this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[nextIdx].introCutscene, false);
+            if (shouldPlayBlockingCutsceneForChapter(nextIdx)) {
+              this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[nextIdx].introCutscene, false);
+            } else {
+              this.beginChapterGameplay(nextIdx);
+            }
           } else {
             this.openUpgradeDraft('next_chapter');
           }
@@ -4361,7 +4842,11 @@ export class NegruzinoEngine {
         this.updateRecords();
         if (this.coopClient?.isInActiveSession() && this.coopClient.isHost()) {
           this.coopClient.sendChapterAdvance(nextIdx, false);
-          this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[nextIdx].introCutscene, false);
+          if (shouldPlayBlockingCutsceneForChapter(nextIdx)) {
+            this.openCutscene(TRANSLATIONS[this.lang].chapterMeta[nextIdx].introCutscene, false);
+          } else {
+            this.beginChapterGameplay(nextIdx);
+          }
         } else {
           this.openUpgradeDraft('next_chapter');
         }
@@ -4373,10 +4858,10 @@ export class NegruzinoEngine {
     if (this.screamerCooldown > 0 && kind !== 'preview') return;
     this.screamerCaptionKey = kind;
     this.screamerKind = kind;
-    this.screamerDuration = this.screamerIntensity === 'reduced' ? 0.42 : 0.86;
+    this.screamerDuration = this.screamerIntensity === 'reduced' ? 0.36 : 0.56;
     this.screamerTimer = this.screamerDuration;
     this.screamerCooldown = 7.2;
-    this.trauma = Math.min(1, this.trauma + (this.screamerIntensity === 'reduced' ? 0.3 : 0.94));
+    this.trauma = Math.min(1, this.trauma + (this.screamerIntensity === 'reduced' ? 0.28 : 0.72));
     this.audio.playScreamer(this.screamerIntensity === 'reduced');
     this.emitHud();
   }
@@ -4499,6 +4984,26 @@ export class NegruzinoEngine {
       // Keep reserve ammo topped up in the Hub firing range
       st.reserve = cfg.maxReserve;
     } else {
+      const activeChap = this.chapterIndex + 1;
+      const destroyCandidates =
+        this.mode === 'story'
+          ? this.objectiveNodes
+              .filter(
+                (n) =>
+                  n.spec.chapter === activeChap &&
+                  !n.spec.completed &&
+                  n.spec.kind === 'destroy'
+              )
+              .map((n) => ({
+                id: n.spec.id,
+                x: n.spec.x,
+                z: n.spec.z,
+                radius: 1.05,
+                hitHeight: 2.95,
+                completed: n.spec.completed,
+              }))
+          : [];
+
       for (let p = 0; p < cfg.pellets; p++) {
         // Compute aim direction with weapon spread (razor tight when AWP scoped)
         const spread = this.isScoped ? cfg.spreadRad * 0.2 : cfg.spreadRad;
@@ -4507,14 +5012,18 @@ export class NegruzinoEngine {
 
         _rayDir.set(sx, sy, -1).normalize().applyQuaternion(this.camera.quaternion);
 
-        // Exact 3D ray-vs-cylinder hit registration against living enemies only
-        // (strictly passes through the rooster companion onto bots behind him)
+        // Exact 3D ray-vs-cylinder hit registration against living enemies AND shootable Anomaly Cores
         const hit = findShotHitEnemy(
           _rayOrigin,
           _rayDir,
           cfg.maxRange,
           this.enemies
         );
+        const objHit =
+          destroyCandidates.length > 0
+            ? findShotHitObjective(_rayOrigin, _rayDir, cfg.maxRange, destroyCandidates)
+            : null;
+
         let bestEnemy: ActiveEnemy | null = null;
         let bestDist = cfg.maxRange;
         let bestHeadshot = false;
@@ -4529,6 +5038,47 @@ export class NegruzinoEngine {
           hitX = hit.hitX;
           hitY = hit.hitY;
           hitZ = hit.hitZ;
+        }
+
+        if (objHit && objHit.distance < bestDist) {
+          const targetNode = this.objectiveNodes.find((n) => n.spec.id === objHit.objectiveId);
+          if (targetNode && !targetNode.spec.completed) {
+            const prog = computeCharacterProgression(this.xp);
+            const dmg = Math.max(
+              8,
+              Math.round(
+                computeWeaponDamage(
+                  this.activeWeapon,
+                  objHit.distance,
+                  false,
+                  this.ownedUpgrades
+                ) * prog.damageMult
+              )
+            );
+            targetNode.spec.hp = Math.max(
+              0,
+              (targetNode.spec.hp ?? targetNode.spec.maxHp ?? 180) - dmg
+            );
+            targetNode.hitFlash = 0.14;
+            this.lastDamagedObjectiveId = targetNode.spec.id;
+            this.destroyObjectiveHudTimer = 3.2;
+            landedAny = true;
+            if (this.activeWeapon === 'shotgun' || this.activeWeapon === 'awp') {
+              landedCrit = true;
+            }
+            this.spawnBurst(
+              objHit.hitX,
+              objHit.hitY,
+              objHit.hitZ,
+              this.activeWeapon === 'shotgun' ? 4 : 9,
+              0xf25c3b,
+              4.6
+            );
+            if (targetNode.spec.hp <= 0) {
+              this.completeObjectiveNode(targetNode);
+            }
+            continue;
+          }
         }
 
         if (bestEnemy) {
@@ -4690,29 +5240,72 @@ export class NegruzinoEngine {
 
   private tick = (): void => {
     if (this.disposed) return;
+
+    const scheduleNext = () => {
+      if (this.isSoftwareGl) {
+        this.afterDraw(this.tick);
+      } else {
+        this.frameId = requestAnimationFrame(this.tick);
+      }
+    };
+
+    // Battery & CPU conservation: skip all simulation & WebGL rendering while tab is backgrounded
+    if (document.hidden) {
+      this.lastNow = performance.now();
+      scheduleNext();
+      return;
+    }
+
     const now = performance.now();
+    const isIdleMenuPhase =
+      this.phase === 'paused' ||
+      this.phase === 'victory' ||
+      this.phase === 'gameover' ||
+      this.phase === 'upgrade';
+    const desiredFps = isIdleMenuPhase ? 8 : this.graphicsProfile.targetFps;
+    const minFrameMs = 1000 / Math.max(1, desiredFps);
+
+    // Frame-rate pacing caps 120Hz/144Hz monitors & mobile displays to save battery and thermals
+    if (
+      !this.isSoftwareGl &&
+      !this.forceRenderNextFrame &&
+      this.lastRenderMs > 0 &&
+      now - this.lastRenderMs < minFrameMs - 1.5
+    ) {
+      scheduleNext();
+      return;
+    }
+    this.lastRenderMs = now;
+    this.forceRenderNextFrame = false;
+
     const rawDt = (now - this.lastNow) / 1000;
     this.lastNow = now;
     const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
 
-    this.updateAmbientLamps(now * 0.001);
+    if (!isIdleMenuPhase) {
+      this.updateAmbientLamps(now * 0.001);
 
-    if (this.phase === 'title') {
-      this.updateTitleCameraTour(dt);
-    } else if (this.phase === 'cutscene') {
-      this.updateCutsceneCamera(dt);
-      if (this.coopClient?.isInActiveSession()) {
-        this.updateCoopSync(dt, false);
+      if (this.phase === 'title') {
+        this.updateTitleCameraTour(dt);
+      } else if (this.phase === 'cutscene') {
+        this.updateCutsceneCamera(dt);
+        if (this.coopClient?.isInActiveSession()) {
+          this.updateCoopSync(dt, false);
+        }
+      } else if (this.phase === 'playing' || this.phase === 'hub') {
+        this.updatePlaying(dt);
       }
-    } else if (this.phase === 'playing' || this.phase === 'hub') {
-      this.updatePlaying(dt);
+
+      this.updateParticles(dt);
+      this.updateRain(dt, now * 0.001);
+      this.updateMoonShadowFollow();
     }
 
-    this.updateParticles(dt);
-    this.updateRain(dt, now * 0.001);
-    this.updateMoonShadowFollow();
-
-    if (this.composer && !this.isSoftwareGl) {
+    if (
+      this.composer &&
+      !this.isSoftwareGl &&
+      this.graphicsProfile.usePostProcessing
+    ) {
       if (this.cinematicPass) {
         this.cinematicPass.uniforms.uTime.value = now * 0.001;
       }
@@ -4721,11 +5314,7 @@ export class NegruzinoEngine {
       this.renderer.render(this.scene, this.camera);
     }
 
-    if (this.isSoftwareGl) {
-      this.afterDraw(this.tick);
-    } else {
-      this.frameId = requestAnimationFrame(this.tick);
-    }
+    scheduleNext();
   };
 
   private updateAmbientLamps(timeSec: number): void {
@@ -4733,6 +5322,7 @@ export class NegruzinoEngine {
     let closestADist = Infinity;
     let closestBIdx = -1;
     let closestBDist = Infinity;
+    const allowedSpots = this.graphicsProfile.lampShadowSpots;
 
     for (let i = 0; i < this.lamps.length; i++) {
       const lamp = this.lamps[i];
@@ -4746,7 +5336,7 @@ export class NegruzinoEngine {
         lamp.pointLight.intensity = 34 * dip;
       }
 
-      if (this.dynamicLampSpots.length > 0) {
+      if (allowedSpots > 0 && this.dynamicLampSpots.length > 0) {
         const d = Math.hypot(
           lamp.x - this.camera.position.x,
           lamp.z - this.camera.position.z
@@ -4763,11 +5353,15 @@ export class NegruzinoEngine {
       }
     }
 
-    // Track 2 nearest sodium streetlamps with shadow-casting SpotLights on GPU
+    // Track nearest sodium streetlamps up to the active graphics profile budget
     const nearestIds = [closestAIdx, closestBIdx];
     for (let s = 0; s < this.dynamicLampSpots.length; s++) {
-      const idx = nearestIds[s];
       const entry = this.dynamicLampSpots[s];
+      if (s >= allowedSpots) {
+        entry.spot.intensity = 0;
+        continue;
+      }
+      const idx = nearestIds[s];
       if (idx >= 0) {
         const l = this.lamps[idx];
         const lx = l.x + l.armDirX * 1.95;
@@ -4788,8 +5382,22 @@ export class NegruzinoEngine {
 
     for (const node of this.objectiveNodes) {
       if (node.group.visible && !node.spec.completed) {
-        const s = 1 + Math.sin(timeSec * 3.8) * 0.14;
+        const kind = node.spec.kind ?? 'interact';
+        const pulseAmp = kind === 'hold' ? 0.035 : 0.14;
+        const s = 1 + Math.sin(timeSec * 3.8) * pulseAmp;
         node.ringMesh.scale.set(s, s, 1);
+        if (node.corePivot) {
+          node.corePivot.rotation.y = timeSec * 1.45;
+          node.corePivot.rotation.x = Math.sin(timeSec * 1.1) * 0.25;
+          node.corePivot.position.y = 1.65 + Math.sin(timeSec * 2.8) * 0.14;
+        }
+        if (node.hitFlash > 0) {
+          node.beaconMat.emissive.setHex(0xfff4d6);
+          node.beaconMat.emissiveIntensity = 3.2;
+        } else if (kind === 'destroy') {
+          node.beaconMat.emissive.setHex(0xf25c3b);
+          node.beaconMat.emissiveIntensity = 1.7 + Math.sin(timeSec * 5.2) * 0.3;
+        }
       }
     }
   }
@@ -5056,10 +5664,10 @@ export class NegruzinoEngine {
       }
     }
 
-    // Animate zone-specific landmarks (Hub Moskvitch halo, Depot radar, Substation Resonator rings)
+    // Animate zone-specific landmarks (Hub ground halo rings stay strictly flush with concrete!)
     for (const prop of this.animatedZoneProps) {
       if (prop.kind === 'car_halo' || prop.kind === 'terminal_beacon') {
-        prop.mesh.position.y = prop.baseY + Math.sin(this.elapsedSec * 2.8) * 0.08;
+        prop.mesh.position.y = prop.baseY;
         prop.mesh.rotation.z += prop.speed * dt;
       } else {
         prop.mesh.rotation[prop.axis] += prop.speed * dt;
@@ -5523,11 +6131,12 @@ export class NegruzinoEngine {
     this.camera.rotation.z = shakeRoll;
     this.skyDome.position.copy(this.camera.position);
 
-    // 4. Update Horror Entities, Pickups, Rooster Companion & LAN Co-op Sync
+    // 4. Update Horror Entities, Pickups, Objectives, Rooster Companion & LAN Co-op Sync
     if (simDt > 0) {
       if (this.phase === 'playing') {
         this.updateEnemies(simDt);
         this.updatePickups(simDt);
+        this.updateObjectives(simDt);
       }
       this.updateRooster(simDt);
       this.updateCoopSync(simDt, moving);
@@ -5984,8 +6593,8 @@ export class NegruzinoEngine {
         e.knockVx = THREE.MathUtils.damp(e.knockVx, 0, 8, dt);
         e.knockVz = THREE.MathUtils.damp(e.knockVz, 0, 8, dt);
 
-        // Enemies weave around houses but cannot clip into player or each other
-        const houseColliders = this.layout.colliders.filter((c) => c.kind !== 'fence');
+        // Enemies weave around houses but cannot clip into player or each other (uses cached zone colliders)
+        const houseColliders = this.enemySolidColliders;
         const resolvedWall = resolveCircleVsAABBs(
           nx,
           nz,
@@ -6281,8 +6890,12 @@ export class NegruzinoEngine {
   }
 
   private updateRain(dt: number, timeSec: number): void {
-    // Advance subtle organic forest wind gusts, wet asphalt sheen, ground mist & puddle reflections
+    // Advance subtle organic forest wind gusts
     this.foliageWindUniform.value = timeSec;
+    if (this.currentZone === 'hub') {
+      return;
+    }
+
     this.materials.roadTimeUniform.value = timeSec;
     if (this.puddleMat) {
       this.puddleMat.uniforms.uTime.value = timeSec;
@@ -6291,15 +6904,16 @@ export class NegruzinoEngine {
       this.mistSheetMat.uniforms.uTime.value = timeSec;
     }
 
-    // Ultra-delicate light night drizzle filaments (paired with CameraRainOverlay lens droplets)
-    if (this.rainLines && this.rainOffsets && this.rainSpeeds) {
+    // Ultra-delicate light night drizzle filaments (capped by active GraphicsProfile rainScale)
+    if (this.rainLines && this.rainLines.visible && this.rainOffsets && this.rainSpeeds) {
       const posAttr = this.rainLines.geometry.getAttribute(
         'position'
       ) as THREE.BufferAttribute;
       const arr = posAttr.array as Float32Array;
       const cx = this.camera.position.x;
       const cz = this.camera.position.z;
-      const count = this.rainOffsets.length / 3;
+      const maxCount = this.rainOffsets.length / 3;
+      const count = Math.max(1, Math.min(maxCount, Math.floor(maxCount * this.graphicsProfile.rainScale)));
       const windX = 0.07 + Math.sin(timeSec * 0.35) * 0.03;
       const windZ = 0.04;
 
@@ -6322,11 +6936,15 @@ export class NegruzinoEngine {
       posAttr.needsUpdate = true;
     }
 
-    // 3D Road Rain Impact Splash Crowns (tiny splashing rebounds strictly on wet road & central square)
-    if (this.roadSplashMesh && this.roadSplashes.length > 0) {
+    // 3D Road Rain Impact Splash Crowns (disabled in eco mode to save CPU & GPU instancing bandwidth)
+    if (
+      this.roadSplashMesh &&
+      this.roadSplashMesh.visible &&
+      this.graphicsProfile.quality !== 'eco' &&
+      this.roadSplashes.length > 0
+    ) {
       const cx = this.camera.position.x;
       const cz = this.camera.position.z;
-      const splashCol = new THREE.Color();
       for (let i = 0; i < this.roadSplashes.length; i++) {
         const sp = this.roadSplashes[i];
         sp.age += dt;
@@ -6365,12 +6983,12 @@ export class NegruzinoEngine {
 
         const env = Math.sin(Math.min(1, p / 0.14) * (Math.PI / 2)) * (1 - p) * (1 - p);
         const fade = env * (1 - Math.min(1, distFromCam / 22));
-        splashCol.setRGB(
+        _splashColor.setRGB(
           (0.36 + sp.lampTint * 0.62) * fade,
           (0.45 + sp.lampTint * 0.34) * fade,
           (0.64 - sp.lampTint * 0.24) * fade
         );
-        this.roadSplashMesh.setColorAt(i, splashCol);
+        this.roadSplashMesh.setColorAt(i, _splashColor);
       }
       this.roadSplashMesh.instanceMatrix.needsUpdate = true;
       if (this.roadSplashMesh.instanceColor) {
@@ -6488,6 +7106,7 @@ export class NegruzinoEngine {
     );
 
     let nearbyInteractLabel: string | null = null;
+    let nearbyInteractKind: NearbyInteractKind | null = null;
     let nearbyReviveName: string | null = null;
     let hubNearbyAction: 'car' | 'terminal' | null = null;
     const interactKeyLabel = formatBindingLabel(this.keybinds.interact, this.lang, true);
@@ -6497,6 +7116,7 @@ export class NegruzinoEngine {
       const term = this.layout.hubAnchors.terminalPos;
       if (Math.hypot(car.x - this.playerX, car.z - this.playerZ) < this.layout.hubAnchors.carRadius) {
         hubNearbyAction = 'car';
+        nearbyInteractKind = 'hub_car';
         const raw = this.hubInCar ? t.hub.moskvitchLeavePrompt : t.hub.moskvitchBoardPrompt;
         nearbyInteractLabel = this.deviceProfile.isTouch
           ? raw.replace(/^\s*\[[^\]]+\]\s*/, '')
@@ -6505,6 +7125,7 @@ export class NegruzinoEngine {
         Math.hypot(term.x - this.playerX, term.z - this.playerZ) < this.layout.hubAnchors.terminalRadius
       ) {
         hubNearbyAction = 'terminal';
+        nearbyInteractKind = 'hub_specs';
         const raw = t.hub.terminalPrompt;
         nearbyInteractLabel = this.deviceProfile.isTouch
           ? raw.replace(/^\s*\[[^\]]+\]\s*/, '')
@@ -6517,6 +7138,7 @@ export class NegruzinoEngine {
           if (!p.isDowned) continue;
           if (Math.hypot(p.x - this.playerX, p.z - this.playerZ) < 3.4) {
             nearbyReviveName = p.name;
+            nearbyInteractKind = 'revive';
             const rawRevive = t.lanCoop.revivePrompt(p.name);
             nearbyInteractLabel = this.deviceProfile.isTouch
               ? rawRevive.replace(/^\s*\[[^\]]+\]\s*/, '')
@@ -6530,6 +7152,7 @@ export class NegruzinoEngine {
         for (const tn of this.tapeNodes) {
           if (tn.spec.collected || !tn.group.visible) continue;
           if (Math.hypot(tn.spec.x - this.playerX, tn.spec.z - this.playerZ) < 3.3) {
+            nearbyInteractKind = 'tape';
             const meta = t.storyTapes[tn.spec.id as keyof typeof t.storyTapes];
             if (meta) {
               const rawTape = t.tapeCollectPrompt(meta.title);
@@ -6545,12 +7168,13 @@ export class NegruzinoEngine {
           }
         }
       }
-      // Priority 3: Active chapter objective shrine
+      // Priority 3: Active chapter objective shrine (interact-kind only; destroy = shoot, hold = stand inside)
       if (!nearbyInteractLabel && this.mode === 'story') {
         for (const node of chapObjs) {
-          if (!node.spec.completed) {
+          if (!node.spec.completed && (node.spec.kind ?? 'interact') === 'interact') {
             const d = Math.hypot(node.spec.x - this.playerX, node.spec.z - this.playerZ);
             if (d < 3.8) {
+              nearbyInteractKind = 'objective';
               const locLabel = t.objectiveLabels[node.spec.id] ?? node.spec.label;
               nearbyInteractLabel = this.deviceProfile.isTouch
                 ? locLabel
@@ -6637,6 +7261,7 @@ export class NegruzinoEngine {
       roosterName: this.roosterName,
       difficulty: this.difficulty,
       mouseSensitivity: this.mouseSensitivity,
+      graphicsQuality: this.graphicsQuality,
       keybinds: { ...this.keybinds },
       isTouchDevice: this.deviceProfile.isTouch,
       isPortrait: this.deviceProfile.isPortrait,
@@ -6653,7 +7278,9 @@ export class NegruzinoEngine {
       objectivesDone: doneCount,
       objectivesTotal: chapObjs.length,
       objectiveCompass: this.computeObjectiveCompass(),
+      activeObjectiveProgress: this.activeObjectiveProgress,
       nearbyInteractLabel,
+      nearbyInteractKind,
       hp: Math.round(this.hp),
       maxHp: this.maxHp,
       stamina: Math.round(this.stamina),
@@ -6752,6 +7379,19 @@ export class NegruzinoEngine {
     clearTimeout(this.frameId);
     this.unbindEvents();
     this.audio.dispose();
+    if (this.composer) {
+      this.composer.dispose();
+      this.composer = null;
+    }
+    if (this.hubMaterials) {
+      for (const mat of Object.values(this.hubMaterials)) {
+        mat.map?.dispose();
+        mat.normalMap?.dispose();
+        mat.roughnessMap?.dispose();
+        mat.dispose();
+      }
+      this.hubMaterials = null;
+    }
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);
